@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { extractCanonicalLinks, normalizeCapXml } from '../src/index.js';
+import {
+  extractCanonicalLinks,
+  normalizeCapXml,
+  reduceAlertLifecycle,
+} from '../src/index.js';
 
 const capXml = `<?xml version="1.0"?>
 <alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
@@ -37,5 +41,39 @@ describe('CAP ingestion first slice', () => {
     expect(alert.properties.severity).toBe('Severe');
     expect(alert.properties.source.feedSourceId).toBe('drupal');
     expect(alert.geometry).toBeNull();
+  });
+
+  it('removes expired alerts', () => {
+    const [alert] = normalizeCapXml(capXml, { id: 'source', feedUrl: 'https://example.test' });
+    expect(reduceAlertLifecycle([alert], new Date('2026-09-21T03:00:00Z'))).toEqual([]);
+  });
+
+  it('removes an alert referenced by a CAP Cancel message', () => {
+    const [alert] = normalizeCapXml(capXml, { id: 'source', feedUrl: 'https://example.test' });
+    const cancel = {
+      id: 'sender-cancel',
+      properties: {
+        identifier: 'sender-cancel',
+        msgType: 'Cancel',
+        references: 'sender@example.test,sender-1,2026-09-21T00:00:00-00:00',
+      },
+    };
+    expect(reduceAlertLifecycle([alert, cancel], new Date('2026-09-21T01:00:00Z'))).toEqual([]);
+  });
+
+  it('keeps an Update and removes the referenced alert', () => {
+    const [alert] = normalizeCapXml(capXml, { id: 'source', feedUrl: 'https://example.test' });
+    const update = {
+      id: 'sender-update',
+      properties: {
+        identifier: 'sender-update',
+        msgType: 'Update',
+        references: 'sender@example.test,sender-1,2026-09-21T00:00:00-00:00',
+        expires: '2026-09-21T04:00:00Z',
+      },
+    };
+    expect(reduceAlertLifecycle([alert, update], new Date('2026-09-21T01:00:00Z'))).toEqual([
+      update,
+    ]);
   });
 });

@@ -24,8 +24,9 @@ export async function pollSources(config, persistState = true) {
   for (const source of sources) {
     try {
       const alerts = await ingestSource(source);
-      if (persistState) await persistSourceState(source, 'ok', alerts.length);
-      results.push({ id: source.id, status: 'ok', alerts });
+      const currentAlerts = reduceAlertLifecycle(alerts);
+      if (persistState) await persistSourceState(source, 'ok', currentAlerts.length);
+      results.push({ id: source.id, status: 'ok', alerts: currentAlerts });
     } catch (error) {
       if (persistState) await persistSourceState(source, 'degraded', 0, error.message);
       results.push({ id: source.id, status: 'degraded', alerts: [] });
@@ -80,9 +81,10 @@ export async function ingestSource(source) {
   if (source.feedFormat === 'rss' || source.feedFormat === 'atom') {
     const feed = await fetchText(source.feedUrl);
     const links = extractCanonicalLinks(feed, source.feedFormat);
-    return Promise.all(
+    const documents = await Promise.all(
       links.map(async (link) => normalizeCapXml(await fetchText(link), source)),
     );
+    return documents.flat();
   }
 
   if (source.feedFormat === 'cap-xml') {
@@ -127,6 +129,49 @@ export function normalizeCapXml(xml, source) {
   return alerts.map((alert) => normalizeAlert(alert, source));
 }
 
+export function reduceAlertLifecycle(features, now = new Date()) {
+  const active = new Map();
+  const cancelled = new Set();
+  const superseded = new Set();
+
+  for (const feature of features) {
+    const properties = feature.properties ?? {};
+    const references = parseReferences(properties.references);
+
+    if (properties.msgType === 'Cancel') {
+      references.forEach((identifier) => cancelled.add(identifier));
+      continue;
+    }
+
+    if (properties.msgType === 'Update') {
+      references.forEach((identifier) => superseded.add(identifier));
+    }
+
+    if (!isExpired(properties.expires, now)) {
+      active.set(properties.identifier ?? feature.id, feature);
+    }
+  }
+
+  return [...active.entries()]
+    .filter(([identifier]) => !cancelled.has(identifier) && !superseded.has(identifier))
+    .map(([, feature]) => feature);
+}
+
+export function parseReferences(value) {
+  if (!value) return [];
+  return String(value)
+    .trim()
+    .split(/\s+/u)
+    .map((reference) => reference.split(',')[1] ?? reference)
+    .filter(Boolean);
+}
+
+export function isExpired(value, now = new Date()) {
+  if (!value) return false;
+  const expires = new Date(value);
+  return !Number.isNaN(expires.valueOf()) && expires <= now;
+}
+
 function normalizeAlert(alert, source) {
   const info = asArray(alert.info)[0] ?? {};
   return {
@@ -139,6 +184,7 @@ function normalizeAlert(alert, source) {
       sender: alert.sender,
       status: alert.status,
       msgType: alert.msgType,
+      references: alert.references,
       sent: alert.sent,
       event: info.event,
       headline: info.headline,
