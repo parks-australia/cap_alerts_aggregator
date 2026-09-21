@@ -2,7 +2,6 @@ import { XMLParser } from 'fast-xml-parser';
 import { DynamoDBClient, PutItemCommand } from '@aws-sdk/client-dynamodb';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 
-const CAP_NAMESPACE = 'urn:oasis:names:tc:emergency:cap:1.2';
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
   removeNSPrefix: true,
@@ -15,16 +14,20 @@ const ssm = new SSMClient({});
 
 export async function handler() {
   const config = await loadRuntimeConfig();
+  return pollSources(config, true);
+}
+
+export async function pollSources(config, persistState = true) {
   const { sources } = await fetchFeedSources(config);
   const results = [];
 
   for (const source of sources) {
     try {
       const alerts = await ingestSource(source);
-      await persistSourceState(source, 'ok', alerts.length);
+      if (persistState) await persistSourceState(source, 'ok', alerts.length);
       results.push({ id: source.id, status: 'ok', alerts });
     } catch (error) {
-      await persistSourceState(source, 'degraded', 0, error.message);
+      if (persistState) await persistSourceState(source, 'degraded', 0, error.message);
       results.push({ id: source.id, status: 'degraded', alerts: [] });
     }
   }
@@ -37,6 +40,18 @@ export async function loadRuntimeConfig() {
     feedSourcesUrl: process.env.DRUPAL_FEED_SOURCES_URL,
     apiKey: await resolveParameter(process.env.DRUPAL_API_KEY_PARAMETER),
     aggregatorSecret: await resolveParameter(process.env.DRUPAL_AGGREGATOR_SECRET_PARAMETER),
+  };
+}
+
+export function loadLocalConfig(env = process.env) {
+  const required = ['DRUPAL_FEED_SOURCES_URL', 'DRUPAL_API_KEY', 'DRUPAL_AGGREGATOR_SECRET'];
+  for (const name of required) {
+    if (!env[name]) throw new Error(`Missing ${name}; copy .env.example to .env and set it.`);
+  }
+  return {
+    feedSourcesUrl: env.DRUPAL_FEED_SOURCES_URL,
+    apiKey: env.DRUPAL_API_KEY,
+    aggregatorSecret: env.DRUPAL_AGGREGATOR_SECRET,
   };
 }
 

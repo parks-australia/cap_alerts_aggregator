@@ -1,5 +1,6 @@
 {
   "name": "cap-alerts-aggregator",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -8,6 +9,7 @@
   "scripts": {
     "test": "vitest run",
     "lint": "eslint .",
+    "local:poll": "node src/local.js",
     "format": "prettier --write .",
     "sam:build": "sam build",
     "sam:validate": "sam validate --lint"

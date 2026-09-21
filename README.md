@@ -19,11 +19,36 @@ Park attribution, boundary matching, cancellation/expiry reduction, GeoJSON adap
 
 ```sh
 npm install
+npm run local:poll
 npm test
 npm run lint
 npm run sam:validate
 npm run sam:build
 ```
+
+### Local Drupal testing
+
+Copy `.env.example` to `.env` in this project directory and set:
+
+- `DRUPAL_FEED_SOURCES_URL`: normally
+	`https://parksaustralia-cms.ddev.site/api/cap-alerts/feed-sources/`.
+- `DRUPAL_API_KEY`: the local Drupal API key accepted by the connector endpoint.
+- `DRUPAL_AGGREGATOR_SECRET`: the Key value configured in Drupal's CAP Aggregator Connector settings.
+- `LOCAL_OUTPUT_FILE`: optional path for the normalized local output; defaults to
+	`.local-output/aggregator.json`.
+
+Then run:
+
+```sh
+cp .env.example .env
+# Edit .env with local values.
+npm run local:poll
+```
+
+The local runner calls Drupal, fetches the configured RSS/Atom/CAP-XML sources, skips DynamoDB/SSM,
+and writes the result to `.local-output/aggregator.json`. That file is the current local inspection
+point. It is not yet the final per-park output; park attribution, lifecycle filtering, and S3/
+CloudFront publication are later stages.
 
 ## SAM deployment
 

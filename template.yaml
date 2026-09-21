@@ -30,8 +30,8 @@ Resources:
   AggregatorFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: src/
-      Handler: index.handler
+      CodeUri: ./
+      Handler: src/index.handler
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref FeedStateTable

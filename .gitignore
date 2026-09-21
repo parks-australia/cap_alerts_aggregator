@@ -1,4 +1,44 @@
+# Ignore
+
+# Generally you should only ignore the root vendor directory. It's important
+# that core/assets/vendor and any other vendor directories within contrib or
+# custom module, theme, etc., are not ignored unless you purposely do so.
+/vendor/
+/.editorconfig
+/.gitattributes
+.idea/
+
+# Ignore .env files as they are personal
+/.env
+/.env.development
+/.env.production
+
+# Ignore MacOS Finder files
+.DS_Store
+
+# Ingore Composer installation
+composer.phar
+
+# Ignore backups
+*.sql
+*.tar
+*.gz
+/db/
+
+# Ignore editor files
+.vscode/*
+
+# Ignore local dev environment setting files
+.lando
+.ddev/
+
+# Local aliases and environment variables
+.bash_local
+
+# Ignore dependency installation directories
 node_modules/
 .aws-sam/
-.env
+
+# Ignore local output and coverage directories
+.local-output/
 coverage/
