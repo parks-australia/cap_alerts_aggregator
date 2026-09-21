@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { loadLocalConfig, pollSources } from './index.js';
+import { buildParkOutputs, loadBoundaries } from './geometry.js';
 
 await loadDotEnv();
 
@@ -10,6 +11,18 @@ const output = await pollSources(loadLocalConfig(), false);
 await mkdir(dirname(outputFile), { recursive: true });
 await writeFile(outputFile, `${JSON.stringify(output, null, 2)}\n`, 'utf8');
 console.log(`Wrote local aggregator output to ${outputFile}`);
+
+if (process.env.BOUNDARIES_DIR) {
+  const boundaries = await loadBoundaries(resolve(process.env.BOUNDARIES_DIR));
+  const features = output.sources.flatMap((source) => source.alerts);
+  const parkOutputs = buildParkOutputs(features, boundaries, output.generatedAt);
+  const outputDirectory = resolve(process.env.LOCAL_OUTPUT_DIR ?? '.local-output/parks');
+  await mkdir(outputDirectory, { recursive: true });
+  await Promise.all(Object.entries(parkOutputs).map(([parkId, parkOutput]) => (
+    writeFile(`${outputDirectory}/${parkId}.json`, `${JSON.stringify(parkOutput, null, 2)}\n`, 'utf8')
+  )));
+  console.log(`Wrote ${Object.keys(parkOutputs).length} per-park files to ${outputDirectory}`);
+}
 
 function loadDotEnv() {
   const envPath = resolve('.env');

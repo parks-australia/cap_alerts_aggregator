@@ -2,6 +2,8 @@ import booleanIntersects from '@turf/boolean-intersects';
 import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
 import circle from '@turf/circle';
 import { point, polygon } from '@turf/helpers';
+import { readdir, readFile } from 'node:fs/promises';
+import { basename, extname, join } from 'node:path';
 
 const EARTH_RADIUS_KM = 6371;
 
@@ -89,6 +91,32 @@ export function assignFeaturesToParks(features, boundaries) {
     }
   }
   return output;
+}
+
+export async function loadBoundaries(directory) {
+  const boundaries = {};
+  for (const filename of await readdir(directory)) {
+    if (extname(filename).toLowerCase() !== '.geojson') continue;
+    const parkId = basename(filename, extname(filename));
+    const boundary = JSON.parse(await readFile(join(directory, filename), 'utf8'));
+    boundaries[parkId] = boundary.type === 'Feature'
+      ? boundary
+      : { type: 'Feature', properties: { parkId }, geometry: boundary };
+  }
+  return boundaries;
+}
+
+export function buildParkOutputs(features, boundaries, generatedAt = new Date().toISOString()) {
+  const assigned = assignFeaturesToParks(features, boundaries);
+  return Object.fromEntries(
+    Object.entries(assigned).map(([parkId, parkFeatures]) => [parkId, {
+      type: 'FeatureCollection',
+      schemaVersion: 1,
+      park: parkId,
+      generatedAt,
+      features: parkFeatures,
+    }]),
+  );
 }
 
 function asArray(value) {

@@ -41,4 +41,5 @@ node_modules/
 
 # Ignore local output and coverage directories
 .local-output/
+boundaries/
 coverage/
