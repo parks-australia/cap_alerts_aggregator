@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { resolve } from 'node:path';
 import {
   assignFeaturesToParks,
   buildParkOutputs,
   capAreaGeometry,
+  loadBoundaries,
   parseCapCircle,
   parseCapPolygon,
 } from '../src/geometry.js';
-import { polygon } from '@turf/helpers';
+import { point, polygon } from '@turf/helpers';
 
 describe('CAP geometry normalization', () => {
   it('parses CAP polygon coordinates into GeoJSON longitude/latitude order', () => {
@@ -87,5 +89,25 @@ describe('CAP geometry normalization', () => {
       generatedAt: '2026-09-21T00:00:00.000Z',
     });
     expect(outputs.parkA.features).toHaveLength(1);
+  });
+
+  it('loads and culls against the supplied anbg and bnp boundary assets', async () => {
+    const boundaries = await loadBoundaries(resolve('assets/boundary_data'));
+    expect(Object.keys(boundaries).sort()).toEqual(['anbg', 'bnp', 'cinp', 'knp', 'ninp', 'pknp', 'uktnp']);
+    const coordinateFromFeature = (feature) => {
+      const coordinates = feature.geometry.coordinates;
+      return feature.geometry.type === 'MultiPolygon'
+        ? coordinates[0][0][0]
+        : coordinates[0][0];
+    };
+    const anbgCoordinate = coordinateFromFeature(boundaries.anbg.features[0]);
+    const bnpCoordinate = coordinateFromFeature(boundaries.bnp.features[0]);
+    const assigned = assignFeaturesToParks([
+      point(anbgCoordinate, { identifier: 'anbg-test' }),
+      point(bnpCoordinate, { identifier: 'bnp-test' }),
+    ], boundaries);
+
+    expect(assigned.anbg).toHaveLength(1);
+    expect(assigned.bnp).toHaveLength(1);
   });
 });

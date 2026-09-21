@@ -12,8 +12,9 @@ await mkdir(dirname(outputFile), { recursive: true });
 await writeFile(outputFile, `${JSON.stringify(output, null, 2)}\n`, 'utf8');
 console.log(`Wrote local aggregator output to ${outputFile}`);
 
-if (process.env.BOUNDARIES_DIR) {
-  const boundaries = await loadBoundaries(resolve(process.env.BOUNDARIES_DIR));
+const boundariesDirectory = resolve(process.env.BOUNDARIES_DIR ?? 'assets/boundary_data');
+if (process.env.BOUNDARIES_DIR !== 'none') {
+  const boundaries = await loadBoundaries(boundariesDirectory);
   const features = output.sources.flatMap((source) => source.alerts);
   const parkOutputs = buildParkOutputs(features, boundaries, output.generatedAt);
   const outputDirectory = resolve(process.env.LOCAL_OUTPUT_DIR ?? '.local-output/parks');

@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: Parks Australia CAP alert aggregator
 
@@ -14,7 +14,7 @@ Globals:
         DRUPAL_FEED_SOURCES_URL: !Ref DrupalFeedSourcesUrl
         DRUPAL_API_KEY_PARAMETER: !Ref DrupalApiKeyParameter
         DRUPAL_AGGREGATOR_SECRET_PARAMETER: !Ref DrupalAggregatorSecretParameter
-        BOUNDARIES_DIR: boundaries
+        BOUNDARIES_DIR: assets/boundary_data
 
 Parameters:
   DrupalFeedSourcesUrl:
@@ -41,7 +41,7 @@ Resources:
         - Statement:
             - Effect: Allow
               Action: ssm:GetParameter
-              Resource: '*'
+              Resource: "*"
       Events:
         PollSchedule:
           Type: Schedule

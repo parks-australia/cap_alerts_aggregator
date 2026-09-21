@@ -1,22 +1,22 @@
-import js from '@eslint/js';
+import js from "@eslint/js";
 
 export default [
   {
-    ignores: ['.aws-sam/**', 'node_modules/**'],
+    ignores: [".aws-sam/**", "node_modules/**"],
   },
   js.configs.recommended,
   {
     languageOptions: {
       ecmaVersion: 2024,
-      sourceType: 'module',
+      sourceType: "module",
       globals: {
-        console: 'readonly',
-        fetch: 'readonly',
-        process: 'readonly',
+        console: "readonly",
+        fetch: "readonly",
+        process: "readonly",
       },
     },
     rules: {
-      'no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      "no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
     },
   },
 ];

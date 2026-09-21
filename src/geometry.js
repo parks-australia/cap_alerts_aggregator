@@ -76,6 +76,9 @@ export function matchingParks(alertGeometry, boundaries) {
 
 export function geometryMatchesBoundary(alertGeometry, boundary) {
   if (!alertGeometry || !boundary) return false;
+  if (boundary.type === 'FeatureCollection') {
+    return boundary.features.some((feature) => geometryMatchesBoundary(alertGeometry, feature));
+  }
   if (alertGeometry.geometry.type === 'Point' && boundary.geometry.type === 'Polygon') {
     return booleanPointInPolygon(alertGeometry, boundary);
   }
@@ -103,11 +106,14 @@ export async function loadBoundaries(directory) {
     throw error;
   }
 
+    // This expects the naming syntax to be "<parkId>-boundary[_<resolution>m].geojson" or "<parkId>_boundary.geojson", e.g. uktnp-boundary_10m.geojson
   for (const filename of filenames) {
     if (extname(filename).toLowerCase() !== '.geojson') continue;
-    const parkId = basename(filename, extname(filename));
+    const parkId = basename(filename, extname(filename))
+      .replace(/-boundary(?:_\d+m)?$/u, '')
+      .replace(/_boundaries$/u, '');
     const boundary = JSON.parse(await readFile(join(directory, filename), 'utf8'));
-    boundaries[parkId] = boundary.type === 'Feature'
+    boundaries[parkId] = boundary.type === 'Feature' || boundary.type === 'FeatureCollection'
       ? boundary
       : { type: 'Feature', properties: { parkId }, geometry: boundary };
   }

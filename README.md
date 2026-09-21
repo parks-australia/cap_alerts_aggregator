@@ -32,13 +32,15 @@ npm run sam:build
 Copy `.env.example` to `.env` in this project directory and set:
 
 - `DRUPAL_FEED_SOURCES_URL`: normally
-	`https://parksaustralia-cms.ddev.site/api/cap-alerts/feed-sources/`.
+  `https://parksaustralia-cms.ddev.site/api/cap-alerts/feed-sources/`.
 - `DRUPAL_API_KEY`: the local Drupal API key accepted by the connector endpoint.
 - `DRUPAL_AGGREGATOR_SECRET`: the Key value configured in Drupal's CAP Aggregator Connector settings.
 - `LOCAL_OUTPUT_FILE`: optional path for the normalized local output; defaults to
-	`.local-output/aggregator.json`.
-- `BOUNDARIES_DIR`: optional directory containing boundary files named by park shortcode, such as
-  `boundaries/knp.geojson`.
+  `.local-output/aggregator.json`.
+- `BOUNDARIES_DIR`: directory containing boundary files named by park shortcode. The supplied
+  files are under `assets/boundary_data/` and use names such as `anbg-boundary_10m.geojson` and
+  `bnp-boundary_10m.geojson`; the `-boundary` and optional resolution suffix are normalized
+  automatically.
 - `LOCAL_OUTPUT_DIR`: optional directory for per-park files; defaults to `.local-output/parks`.
 
 Then run:
@@ -52,8 +54,10 @@ npm run local:poll
 The local runner calls Drupal, fetches the configured RSS/Atom/CAP-XML sources, skips DynamoDB/SSM,
 and writes the result to `.local-output/aggregator.json`. If `BOUNDARIES_DIR` contains boundary
 files, it also writes one FeatureCollection per park, such as `.local-output/parks/knp.json`.
-These local files are the current inspection point. S3/CloudFront publication and full park
-attribution remain later deployment stages.
+Only alert features with polygon/circle-derived geometry intersecting a supplied park boundary are
+included in that park's file; alerts with no usable geometry are culled from per-park output.
+These local files are the current inspection point. S3/CloudFront publication remains a deployment
+stage.
 
 ## SAM deployment
 
