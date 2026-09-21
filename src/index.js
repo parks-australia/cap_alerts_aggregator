@@ -1,12 +1,13 @@
 import { XMLParser } from 'fast-xml-parser';
 import { DynamoDBClient, PutItemCommand } from '@aws-sdk/client-dynamodb';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
+import { capAreaGeometry } from './geometry.js';
 
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
   removeNSPrefix: true,
   processEntities: false,
-  isArray: (name) => ['alert', 'entry', 'item', 'info'].includes(name),
+  isArray: (name) => ['alert', 'entry', 'item', 'info', 'area'].includes(name),
 });
 
 const dynamo = new DynamoDBClient({});
@@ -174,10 +175,15 @@ export function isExpired(value, now = new Date()) {
 
 function normalizeAlert(alert, source) {
   const info = asArray(alert.info)[0] ?? {};
+  const geometries = asArray(info.area).flatMap((area) => capAreaGeometry(area));
   return {
     type: 'Feature',
     id: alert.identifier,
-    geometry: null,
+    geometry: geometries.length === 1
+      ? geometries[0].geometry
+      : geometries.length > 1
+        ? { type: 'GeometryCollection', geometries: geometries.map((item) => item.geometry) }
+        : null,
     properties: {
       source: { feedSourceId: source.id },
       identifier: alert.identifier,
