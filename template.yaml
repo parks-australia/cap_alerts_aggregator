@@ -14,6 +14,7 @@ Globals:
         DRUPAL_FEED_SOURCES_URL: !Ref DrupalFeedSourcesUrl
         DRUPAL_API_KEY_PARAMETER: !Ref DrupalApiKeyParameter
         DRUPAL_AGGREGATOR_SECRET_PARAMETER: !Ref DrupalAggregatorSecretParameter
+        BOUNDARIES_DIR: boundaries
 
 Parameters:
   DrupalFeedSourcesUrl:

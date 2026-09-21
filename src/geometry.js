@@ -95,7 +95,15 @@ export function assignFeaturesToParks(features, boundaries) {
 
 export async function loadBoundaries(directory) {
   const boundaries = {};
-  for (const filename of await readdir(directory)) {
+  let filenames;
+  try {
+    filenames = await readdir(directory);
+  } catch (error) {
+    if (error.code === 'ENOENT') return boundaries;
+    throw error;
+  }
+
+  for (const filename of filenames) {
     if (extname(filename).toLowerCase() !== '.geojson') continue;
     const parkId = basename(filename, extname(filename));
     const boundary = JSON.parse(await readFile(join(directory, filename), 'utf8'));

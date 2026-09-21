@@ -1,7 +1,9 @@
 import { XMLParser } from 'fast-xml-parser';
 import { DynamoDBClient, PutItemCommand } from '@aws-sdk/client-dynamodb';
+import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
-import { capAreaGeometry } from './geometry.js';
+import { buildParkOutputs, capAreaGeometry, loadBoundaries } from './geometry.js';
+import { resolve } from 'node:path';
 
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
@@ -11,11 +13,35 @@ const xmlParser = new XMLParser({
 });
 
 const dynamo = new DynamoDBClient({});
+const s3 = new S3Client({});
 const ssm = new SSMClient({});
 
 export async function handler() {
   const config = await loadRuntimeConfig();
-  return pollSources(config, true);
+  const output = await pollSources(config, true);
+  await publishParkOutputs(output);
+  return output;
+}
+
+export async function publishParkOutputs(output) {
+  if (!process.env.OUTPUT_BUCKET) return {};
+
+  const boundaryDirectory = resolve(process.env.BOUNDARIES_DIR ?? 'boundaries');
+  const boundaries = await loadBoundaries(boundaryDirectory);
+  if (!Object.keys(boundaries).length) return {};
+
+  const features = output.sources.flatMap((source) => source.alerts);
+  const parkOutputs = buildParkOutputs(features, boundaries, output.generatedAt);
+  await Promise.all(Object.entries(parkOutputs).map(([parkId, parkOutput]) => (
+    s3.send(new PutObjectCommand({
+      Bucket: process.env.OUTPUT_BUCKET,
+      Key: `alerts/${parkId}.json`,
+      Body: JSON.stringify(parkOutput),
+      ContentType: 'application/geo+json',
+      CacheControl: 'max-age=60',
+    }))
+  )));
+  return parkOutputs;
 }
 
 export async function pollSources(config, persistState = true) {
