@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Parks Australia CAP alert aggregator
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Timeout: 60
+    MemorySize: 512
+    Environment:
+      Variables:
+        FEED_STATE_TABLE: !Ref FeedStateTable
+        OUTPUT_BUCKET: !Ref OutputBucket
+        DRUPAL_FEED_SOURCES_URL: !Ref DrupalFeedSourcesUrl
+        DRUPAL_API_KEY_PARAMETER: !Ref DrupalApiKeyParameter
+        DRUPAL_AGGREGATOR_SECRET_PARAMETER: !Ref DrupalAggregatorSecretParameter
+
+Parameters:
+  DrupalFeedSourcesUrl:
+    Type: String
+  DrupalApiKeyParameter:
+    Type: AWS::SSM::Parameter::Value<String>
+  DrupalAggregatorSecretParameter:
+    Type: AWS::SSM::Parameter::Value<String>
+  PollSchedule:
+    Type: String
+    Default: rate(1 minute)
+
+Resources:
+  AggregatorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: index.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FeedStateTable
+        - S3WritePolicy:
+            BucketName: !Ref OutputBucket
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: '*'
+      Events:
+        PollSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: !Ref PollSchedule
+            Enabled: true
+
+  FeedStateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: state_key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: state_key
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+
+  OutputBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+Outputs:
+  AggregatorFunction:
+    Value: !GetAtt AggregatorFunction.Arn
+  OutputBucket:
+    Value: !Ref OutputBucket
