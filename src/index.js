@@ -24,7 +24,7 @@ export async function handler() {
 }
 
 export async function publishParkOutputs(output) {
-  if (!process.env.OUTPUT_BUCKET) return {};
+  if (!process.env.AWS_SAM_OUTPUT_BUCKET) return {};
 
   const boundaryDirectory = resolve(process.env.BOUNDARIES_DIR ?? 'boundaries');
   const boundaries = await loadBoundaries(boundaryDirectory);
@@ -34,7 +34,7 @@ export async function publishParkOutputs(output) {
   const parkOutputs = buildParkOutputs(features, boundaries, output.generatedAt);
   await Promise.all(Object.entries(parkOutputs).map(([parkId, parkOutput]) => (
     s3.send(new PutObjectCommand({
-      Bucket: process.env.OUTPUT_BUCKET,
+      Bucket: process.env.AWS_SAM_OUTPUT_BUCKET,
       Key: `alerts/${parkId}.json`,
       Body: JSON.stringify(parkOutput),
       ContentType: 'application/geo+json',
@@ -66,19 +66,22 @@ export async function pollSources(config, persistState = true) {
 export async function loadRuntimeConfig() {
   return {
     feedSourcesUrl: process.env.DRUPAL_FEED_SOURCES_URL,
-    apiKey: await resolveParameter(process.env.DRUPAL_API_KEY_PARAMETER),
-    aggregatorSecret: await resolveParameter(process.env.DRUPAL_AGGREGATOR_SECRET_PARAMETER),
+    aggregatorSecret: await resolveParameter(
+      process.env.AWS_SAM_DRUPAL_AGGREGATOR_SECRET_SSM_PARAMETER,
+    ),
   };
 }
 
 export function loadLocalConfig(env = process.env) {
-  const required = ['DRUPAL_FEED_SOURCES_URL', 'DRUPAL_API_KEY', 'DRUPAL_AGGREGATOR_SECRET'];
+  const required = [
+    'DRUPAL_FEED_SOURCES_URL',
+    'DRUPAL_AGGREGATOR_SECRET',
+  ];
   for (const name of required) {
     if (!env[name]) throw new Error(`Missing ${name}; copy .env.example to .env and set it.`);
   }
   return {
     feedSourcesUrl: env.DRUPAL_FEED_SOURCES_URL,
-    apiKey: env.DRUPAL_API_KEY,
     aggregatorSecret: env.DRUPAL_AGGREGATOR_SECRET,
   };
 }
@@ -93,7 +96,6 @@ async function resolveParameter(name) {
 export async function fetchFeedSources(config) {
   const response = await fetch(config.feedSourcesUrl, {
     headers: {
-      'api-key': config.apiKey,
       'X-Cap-Aggregator-Secret': config.aggregatorSecret,
       accept: 'application/json',
     },
@@ -240,7 +242,7 @@ async function persistSourceState(source, status, alertCount, error) {
   };
   if (error) item.error = { S: error.slice(0, 1000) };
   await dynamo.send(
-    new PutItemCommand({ TableName: process.env.FEED_STATE_TABLE, Item: item }),
+    new PutItemCommand({ TableName: process.env.AWS_SAM_FEED_STATE_TABLE, Item: item }),
   );
 }
 

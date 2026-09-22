@@ -9,20 +9,18 @@ Globals:
     MemorySize: 512
     Environment:
       Variables:
-        FEED_STATE_TABLE: !Ref FeedStateTable
-        OUTPUT_BUCKET: !Ref OutputBucket
+        AWS_SAM_FEED_STATE_TABLE: !Ref FeedStateTable
+        AWS_SAM_OUTPUT_BUCKET: !Ref OutputBucket
         DRUPAL_FEED_SOURCES_URL: !Ref DrupalFeedSourcesUrl
-        DRUPAL_API_KEY_PARAMETER: !Ref DrupalApiKeyParameter
-        DRUPAL_AGGREGATOR_SECRET_PARAMETER: !Ref DrupalAggregatorSecretParameter
+        AWS_SAM_DRUPAL_AGGREGATOR_SECRET_SSM_PARAMETER: !Ref DrupalAggregatorSecretSsmParameter
         BOUNDARIES_DIR: assets/boundary_data
 
 Parameters:
   DrupalFeedSourcesUrl:
     Type: String
-  DrupalApiKeyParameter:
-    Type: AWS::SSM::Parameter::Value<String>
-  DrupalAggregatorSecretParameter:
-    Type: AWS::SSM::Parameter::Value<String>
+  DrupalAggregatorSecretSsmParameter:
+    Type: String
+    Description: Name of the AWS SSM SecureString containing the Drupal connector shared secret.
   PollSchedule:
     Type: String
     Default: rate(1 minute)

@@ -7,7 +7,8 @@ Standalone Node.js AWS SAM service for polling CAP Feed Sources configured in Dr
 - Node.js 22 Lambda invoked by EventBridge every minute.
 - DynamoDB state table for source health and future lifecycle state.
 - S3 output bucket.
-- Secure Drupal Feed Source retrieval using SSM parameters, `api-key`, and `X-Cap-Aggregator-Secret`.
+- Secure Drupal Feed Source retrieval using the Drupal connector shared secret stored in SSM for AWS
+  and `X-Cap-Aggregator-Secret` locally/in requests.
 - RSS and Atom canonical-link extraction.
 - CAP XML parsing with external entity processing disabled.
 - Normalized GeoJSON Feature-shaped alert objects.
@@ -33,7 +34,6 @@ Copy `.env.example` to `.env` in this project directory and set:
 
 - `DRUPAL_FEED_SOURCES_URL`: normally
   `https://parksaustralia-cms.ddev.site/api/cap-alerts/feed-sources/`.
-- `DRUPAL_API_KEY`: the local Drupal API key accepted by the connector endpoint.
 - `DRUPAL_AGGREGATOR_SECRET`: the Key value configured in Drupal's CAP Aggregator Connector settings.
 - `LOCAL_OUTPUT_FILE`: optional path for the normalized local output; defaults to
   `.local-output/aggregator.json`.
@@ -42,6 +42,13 @@ Copy `.env.example` to `.env` in this project directory and set:
   `bnp-boundary_10m.geojson`; the `-boundary` and optional resolution suffix are normalized
   automatically.
 - `LOCAL_OUTPUT_DIR`: optional directory for per-park files; defaults to `.local-output/parks`.
+
+Variables naming Drupal or AWS are explicitly service-scoped. Local filesystem/output variables stay
+short because they are internal to this project. AWS SAM parameters remain CloudFormation parameters;
+`DrupalAggregatorSecretSsmParameter` must be the name of an AWS SSM SecureString, not the secret
+value itself. The Lambda resolves that parameter with `ssm:GetParameter` at runtime. `AWS_SAM_*`
+variables are application environment variables injected by this SAM stack; the prefix is not an
+AWS-required naming syntax.
 
 Then run:
 
@@ -68,5 +75,4 @@ sam deploy --guided
 Required deployment parameters:
 
 - `DrupalFeedSourcesUrl`
-- `DrupalApiKeyParameter`
-- `DrupalAggregatorSecretParameter`
+- `DrupalAggregatorSecretSsmParameter`
