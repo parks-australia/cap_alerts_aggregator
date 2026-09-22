@@ -12,7 +12,8 @@
     "local:poll": "node src/local.js",
     "format": "prettier --write .",
     "sam:build": "sam build",
-    "sam:validate": "sam validate --lint"
+    "sam:validate": "sam validate --lint",
+    "showData": "npm run local:poll && jq '.sources[] | {id, status, error,fetched: (.ingestion.fetches // [] | length),canonicalLinks: .ingestion.canonicalLinkCount,documents: .ingestion.documentCount,ingestedAlerts: ((.ingestedAlerts // []) | length),currentAlerts: (.alerts | length)}' .local-output/aggregator.json"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.879.0",
