@@ -24,10 +24,10 @@ export function capAreaGeometry(area) {
   for (const value of asArray(area?.circle)) {
     const parsed = parseCapCircle(value);
     if (parsed) {
-      geometries.push(circle(point([parsed.longitude, parsed.latitude]), parsed.radiusKm, {
-        steps: 64,
-        units: 'kilometers',
-      }));
+      const center = point([parsed.longitude, parsed.latitude]);
+      geometries.push(parsed.radiusKm === 0
+        ? center
+        : circle(center, parsed.radiusKm, { steps: 64, units: 'kilometers' }));
     }
   }
 
@@ -61,7 +61,15 @@ export function parseCapCircle(value) {
   if (!match) return null;
 
   const [, latitude, longitude, radiusKm] = match.map(Number);
-  if (![latitude, longitude, radiusKm].every(Number.isFinite) || radiusKm <= 0) return null;
+  if (
+    ![latitude, longitude, radiusKm].every(Number.isFinite)
+    || latitude < -90
+    || latitude > 90
+    || longitude < -180
+    || longitude > 180
+    || radiusKm < 0
+    || radiusKm > EARTH_RADIUS_KM
+  ) return null;
   return { latitude, longitude, radiusKm };
 }
 
@@ -78,6 +86,11 @@ export function geometryMatchesBoundary(alertGeometry, boundary) {
   if (!alertGeometry || !boundary) return false;
   if (boundary.type === 'FeatureCollection') {
     return boundary.features.some((feature) => geometryMatchesBoundary(alertGeometry, feature));
+  }
+  if (alertGeometry.geometry?.type === 'GeometryCollection') {
+    return alertGeometry.geometry.geometries.some((geometry) => (
+      geometryMatchesBoundary({ type: 'Feature', properties: {}, geometry }, boundary)
+    ));
   }
   if (alertGeometry.geometry.type === 'Point' && boundary.geometry.type === 'Polygon') {
     return booleanPointInPolygon(alertGeometry, boundary);

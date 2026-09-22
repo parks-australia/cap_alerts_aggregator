@@ -28,6 +28,15 @@ describe('CAP geometry normalization', () => {
     });
   });
 
+  it('rejects out-of-range circles and preserves zero-radius points', () => {
+    expect(parseCapCircle('132.758582,-13.427191 50')).toBeNull();
+    expect(capAreaGeometry({ circle: '-19.046704,136.361083 0' })[0].geometry.type).toBe('Point');
+  });
+  
+  it('rejects circles with a radius greater than that of the earth', () => {
+    expect(parseCapCircle('-13.427191,132.758582 6373')).toBeNull();
+  });
+
   it('converts polygon and circle areas to geometry features', () => {
     const geometries = capAreaGeometry({
       polygon: '-35.2,149.0 -35.2,149.1 -35.3,149.1',
