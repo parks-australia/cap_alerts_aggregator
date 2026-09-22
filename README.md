@@ -59,12 +59,32 @@ npm run local:poll
 ```
 
 The local runner calls Drupal, fetches the configured RSS/Atom/CAP-XML sources, skips DynamoDB/SSM,
-and writes the result to `.local-output/aggregator.json`. If `BOUNDARIES_DIR` contains boundary
+and writes the result to `.local-output/aggregator.json`. That local file includes both
+`ingestedAlerts` (normalized before expiry/cancellation reduction) and `alerts` (after lifecycle
+reduction). If `BOUNDARIES_DIR` contains boundary
 files, it also writes one FeatureCollection per park, such as `.local-output/parks/knp.json`.
 Only alert features with polygon/circle-derived geometry intersecting a supplied park boundary are
 included in that park's file; alerts with no usable geometry are culled from per-park output.
 These local files are the current inspection point. S3/CloudFront publication remains a deployment
 stage.
+
+For source diagnostics, inspect the fetch and parsing stages with:
+
+```sh
+jq '.sources[] | {
+  id, status, error,
+  fetched: (.ingestion.fetches // [] | length),
+  canonicalLinks: .ingestion.canonicalLinkCount,
+  documents: .ingestion.documentCount,
+  ingestedAlerts: ((.ingestedAlerts // []) | length),
+  currentAlerts: (.alerts | length)
+}' .local-output/aggregator.json
+```
+
+`ingestedAlerts` contains normalized alerts before lifecycle reduction. `alerts` contains the
+remaining alerts after expiry, cancel, and update handling. A degraded source includes `error`;
+successful RSS/Atom sources with `canonicalLinks: 0` returned an empty feed, while a nonzero link
+count followed by an error usually means the linked documents were not CAP XML.
 
 ## SAM deployment
 

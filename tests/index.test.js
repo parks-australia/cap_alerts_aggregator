@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   extractCanonicalLinks,
   normalizeCapXml,
+  pollSources,
   reduceAlertLifecycle,
 } from '../src/index.js';
 
@@ -75,5 +76,36 @@ describe('CAP ingestion first slice', () => {
     expect(reduceAlertLifecycle([alert, update], new Date('2026-09-21T01:00:00Z'))).toEqual([
       update,
     ]);
+  });
+
+  it('exposes ingested alerts and source errors for local inspection', async () => {
+    const fetchMock = vi.fn(async (url) => {
+      if (url === 'https://drupal.test/sources') {
+        return {
+          ok: true,
+          json: async () => ({
+            sources: [
+              { id: 'cap', feedFormat: 'cap-xml', feedUrl: 'https://feed.test/cap.xml' },
+              { id: 'unsupported', feedFormat: 'geojson', feedUrl: 'https://feed.test/data' },
+            ],
+          }),
+        };
+      }
+      return { ok: true, text: async () => capXml };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const output = await pollSources(
+      { feedSourcesUrl: 'https://drupal.test/sources', aggregatorSecret: 'secret' },
+      false,
+      { includeIngestedAlerts: true },
+    );
+
+    expect(output.sources[0].ingestedAlerts).toHaveLength(1);
+    expect(output.sources[0].alerts).toHaveLength(0);
+    expect(output.sources[0].ingestion.documentCount).toBe(1);
+    expect(output.sources[1].status).toBe('degraded');
+    expect(output.sources[1].error).toMatch(/Unsupported/);
+    vi.unstubAllGlobals();
   });
 });

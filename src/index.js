@@ -2,6 +2,7 @@ import { XMLParser } from 'fast-xml-parser';
 import { DynamoDBClient, PutItemCommand } from '@aws-sdk/client-dynamodb';
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
+import { Buffer } from 'node:buffer';
 import { buildParkOutputs, capAreaGeometry, loadBoundaries } from './geometry.js';
 import { resolve } from 'node:path';
 
@@ -44,19 +45,34 @@ export async function publishParkOutputs(output) {
   return parkOutputs;
 }
 
-export async function pollSources(config, persistState = true) {
+export async function pollSources(config, persistState = true, options = {}) {
   const { sources } = await fetchFeedSources(config);
   const results = [];
 
   for (const source of sources) {
+    const ingestion = {
+      feedFormat: source.feedFormat,
+      feedUrl: source.feedUrl,
+      canonicalLinkCount: 0,
+      documentCount: 0,
+    };
     try {
-      const alerts = await ingestSource(source);
+      // const xmlWrapper = 
+      const alerts = await ingestSource(source, ingestion);
       const currentAlerts = reduceAlertLifecycle(alerts);
       if (persistState) await persistSourceState(source, 'ok', currentAlerts.length);
-      results.push({ id: source.id, status: 'ok', alerts: currentAlerts });
+      const result = { id: source.id, status: 'ok', alerts: currentAlerts, ingestion };
+      if (options.includeIngestedAlerts) result.ingestedAlerts = alerts;
+      results.push(result);
     } catch (error) {
       if (persistState) await persistSourceState(source, 'degraded', 0, error.message);
-      results.push({ id: source.id, status: 'degraded', alerts: [] });
+      results.push({
+        id: source.id,
+        status: 'degraded',
+        alerts: [],
+        ingestion,
+        error: error.message,
+      });
     }
   }
 
@@ -103,41 +119,53 @@ export async function fetchFeedSources(config) {
   if (!response.ok) {
     throw new Error(`Drupal Feed Source request failed: HTTP ${response.status}`);
   }
-  return response.json();
+  return await response.json();
 }
 
-export async function ingestSource(source) {
+export async function ingestSource(source, ingestion = null) {
+
   if (source.feedFormat === 'rss' || source.feedFormat === 'atom') {
-    const feed = await fetchText(source.feedUrl);
+    const feed = await fetchText(source.feedUrl, ingestion);
     const links = extractCanonicalLinks(feed, source.feedFormat);
+    if (ingestion) ingestion.canonicalLinkCount = links.length;
     const documents = await Promise.all(
-      links.map(async (link) => normalizeCapXml(await fetchText(link), source)),
+      links.map(async (link) => normalizeCapXml(await fetchText(link, ingestion), source)),
     );
+    if (ingestion) ingestion.documentCount = documents.length;
     return documents.flat();
   }
 
   if (source.feedFormat === 'cap-xml') {
-    return normalizeCapXml(await fetchText(source.feedUrl), source);
-  }
+    const alerts = normalizeCapXml(await fetchText(source.feedUrl, ingestion), source);
+    if (ingestion) ingestion.documentCount = 1;
+    return alerts;
+  }  
 
   throw new Error(`Unsupported first-slice feed format: ${source.feedFormat}`);
 }
 
-async function fetchText(url) {
+async function fetchText(url, ingestion = null) {
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Feed request failed: HTTP ${response.status} ${url}`);
   }
-  return response.text();
+  const sourceText = await response.text();
+  if (ingestion) {
+    ingestion.fetches ??= [];
+    ingestion.fetches.push({ url, bytes: Buffer.byteLength(sourceText, 'utf8') });
+  }
+  return sourceText;
 }
 
 export function extractCanonicalLinks(xml, format) {
   const parsed = xmlParser.parse(xml);
+  
   if (format === 'rss') {
     const items = asArray(parsed.rss?.channel?.item);
-    return items.map((item) => item.link).filter(Boolean);
+    const links = items.map((item) => item.link).filter(Boolean);  
+    return links;
   }
-
+  
   const entries = asArray(parsed.feed?.entry);
   return entries
     .map((entry) => {
@@ -152,7 +180,7 @@ export function normalizeCapXml(xml, source) {
   const root = parsed.alert ? parsed : parsed[source.capXmlRootElement];
   const alerts = asArray(root?.alert ?? root);
   if (!alerts.length) {
-    throw new Error('CAP XML document contains no alert elements');
+    throw new Error('CAP XML document contains no consumable alert elements');
   }
 
   return alerts.map((alert) => normalizeAlert(alert, source));

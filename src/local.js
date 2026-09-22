@@ -8,7 +8,7 @@ await loadDotEnv();
 const outputFile = resolve(
   process.env.LOCAL_OUTPUT_FILE ?? '.local-output/aggregator.json',
 );
-const output = await pollSources(loadLocalConfig(), false);
+const output = await pollSources(loadLocalConfig(), false, { includeIngestedAlerts: true });
 
 await mkdir(dirname(outputFile), { recursive: true });
 await writeFile(outputFile, `${JSON.stringify(output, null, 2)}\n`, 'utf8');
