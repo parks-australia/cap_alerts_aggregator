@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import { setTimeout } from 'node:timers/promises';
 import {
   extractCanonicalLinks,
+  ingestSource,
   normalizeCapXml,
   pollSources,
   reduceAlertLifecycle,
@@ -106,6 +108,38 @@ describe('CAP ingestion first slice', () => {
     expect(output.sources[0].ingestion.documentCount).toBe(1);
     expect(output.sources[1].status).toBe('degraded');
     expect(output.sources[1].error).toMatch(/Unsupported/);
+    vi.unstubAllGlobals();
+  });
+
+  it('bounds canonical document fetches and identifies failed links', async () => {
+    const links = Array.from({ length: 25 }, (_, index) => `https://feed.test/${index}.xml`);
+    const rss = `<rss><channel>${links.map((link) => `<item><link>${link}</link></item>`).join('')}</channel></rss>`;
+    let activeFetches = 0;
+    let maximumActiveFetches = 0;
+    const fetchMock = vi.fn(async (url) => {
+      if (url === 'https://feed.test/rss.xml') {
+        return { ok: true, text: async () => rss };
+      }
+      activeFetches += 1;
+      maximumActiveFetches = Math.max(maximumActiveFetches, activeFetches);
+      await setTimeout(1);
+      activeFetches -= 1;
+      if (url === links[7]) throw new TypeError('fetch failed');
+      return { ok: true, text: async () => capXml };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const ingestion = {};
+
+    await expect(ingestSource(
+      { id: 'large-rss', feedFormat: 'rss', feedUrl: 'https://feed.test/rss.xml' },
+      ingestion,
+    )).rejects.toThrow(`${links[7]}: fetch failed`);
+
+    expect(maximumActiveFetches).toBeLessThanOrEqual(10);
+    expect(ingestion.canonicalLinkCount).toBe(25);
+    expect(ingestion.documentCount).toBe(24);
+    expect(ingestion.failedDocumentCount).toBe(1);
+    expect(ingestion.documentErrors).toEqual([{ url: links[7], error: 'fetch failed' }]);
     vi.unstubAllGlobals();
   });
 });

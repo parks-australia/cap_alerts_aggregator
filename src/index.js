@@ -16,6 +16,7 @@ const xmlParser = new XMLParser({
 const dynamo = new DynamoDBClient({});
 const s3 = new S3Client({});
 const ssm = new SSMClient({});
+const canonicalDocumentConcurrency = 10;
 
 export async function handler() {
   const config = await loadRuntimeConfig();
@@ -128,11 +129,7 @@ export async function ingestSource(source, ingestion = null) {
     const feed = await fetchText(source.feedUrl, ingestion);
     const links = extractCanonicalLinks(feed, source.feedFormat);
     if (ingestion) ingestion.canonicalLinkCount = links.length;
-    const documents = await Promise.all(
-      links.map(async (link) => normalizeCapXml(await fetchText(link, ingestion), source)),
-    );
-    if (ingestion) ingestion.documentCount = documents.length;
-    return documents.flat();
+    return await ingestCanonicalDocuments(links, source, ingestion);
   }
 
   if (source.feedFormat === 'cap-xml') {
@@ -142,6 +139,43 @@ export async function ingestSource(source, ingestion = null) {
   }  
 
   throw new Error(`Unsupported first-slice feed format: ${source.feedFormat}`);
+}
+
+async function ingestCanonicalDocuments(links, source, ingestion) {
+  const documents = [];
+  const failures = [];
+  let nextLinkIndex = 0;
+
+  async function worker() {
+    while (nextLinkIndex < links.length) {
+      const link = links[nextLinkIndex++];
+      try {
+        const document = await fetchText(link, ingestion);
+        documents.push(...normalizeCapXml(document, source));
+      } catch (error) {
+        failures.push({ url: link, error: error.message });
+      }
+    }
+  }
+
+  const workerCount = Math.min(canonicalDocumentConcurrency, links.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
+  if (ingestion) {
+    ingestion.documentCount = links.length - failures.length;
+    ingestion.failedDocumentCount = failures.length;
+    if (failures.length) ingestion.documentErrors = failures.slice(0, 10);
+  }
+
+  if (failures.length) {
+    const firstFailure = failures[0];
+    throw new Error(
+      `Failed to ingest ${failures.length} of ${links.length} canonical documents; `
+      + `${firstFailure.url}: ${firstFailure.error}`,
+    );
+  }
+
+  return documents;
 }
 
 async function fetchText(url, ingestion = null) {
