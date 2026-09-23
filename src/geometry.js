@@ -83,10 +83,11 @@ export function matchingParks(alertGeometry, boundaries) {
 }
 
 export function geometryMatchesBoundary(alertGeometry, boundary) {
-  if (!alertGeometry || !boundary || !alertGeometry.geometry?.type || !boundary.geometry?.type) return false;
+  if (!alertGeometry || !boundary || !alertGeometry.geometry?.type) return false;
   if (boundary.type === 'FeatureCollection') {
     return boundary.features.some((feature) => geometryMatchesBoundary(alertGeometry, feature));
   }
+  if (!boundary.geometry?.type) return false;
   if (alertGeometry.geometry?.type === 'GeometryCollection') {
     return alertGeometry.geometry?.geometries.some((geometry) => (
       geometryMatchesBoundary({ type: 'Feature', properties: {}, geometry }, boundary)
