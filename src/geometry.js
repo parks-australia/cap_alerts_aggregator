@@ -83,16 +83,16 @@ export function matchingParks(alertGeometry, boundaries) {
 }
 
 export function geometryMatchesBoundary(alertGeometry, boundary) {
-  if (!alertGeometry || !boundary) return false;
+  if (!alertGeometry || !boundary || !alertGeometry.geometry?.type || !boundary.geometry?.type) return false;
   if (boundary.type === 'FeatureCollection') {
     return boundary.features.some((feature) => geometryMatchesBoundary(alertGeometry, feature));
   }
   if (alertGeometry.geometry?.type === 'GeometryCollection') {
-    return alertGeometry.geometry.geometries.some((geometry) => (
+    return alertGeometry.geometry?.geometries.some((geometry) => (
       geometryMatchesBoundary({ type: 'Feature', properties: {}, geometry }, boundary)
     ));
   }
-  if (alertGeometry.geometry.type === 'Point' && boundary.geometry.type === 'Polygon') {
+  if (alertGeometry.geometry?.type === 'Point' && boundary.geometry?.type === 'Polygon') {
     return booleanPointInPolygon(alertGeometry, boundary);
   }
   return booleanIntersects(alertGeometry, boundary);
