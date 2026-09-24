@@ -1,22 +1,29 @@
-import { XMLParser } from 'fast-xml-parser';
-import { DynamoDBClient, PutItemCommand } from '@aws-sdk/client-dynamodb';
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
-import { Buffer } from 'node:buffer';
-import { buildParkOutputs, capAreaGeometry, loadBoundaries } from './geometry.js';
-import { resolve } from 'node:path';
+import { XMLParser } from "fast-xml-parser";
+import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
+import { Buffer } from "node:buffer";
+import {
+  buildParkOutputs,
+  capAreaGeometry,
+  loadBoundaries,
+} from "./geometry.js";
+import { filterSourceFeatures } from "./filters.js";
+import { resolve } from "node:path";
+import { URL } from "node:url";
 
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
   removeNSPrefix: true,
   processEntities: false,
-  isArray: (name) => ['alert', 'entry', 'item', 'info', 'area'].includes(name),
+  isArray: (name) => ["alert", "entry", "item", "info", "area"].includes(name),
 });
 
 const dynamo = new DynamoDBClient({});
 const s3 = new S3Client({});
 const ssm = new SSMClient({});
 const canonicalDocumentConcurrency = 10;
+const dataQuollMaximumPages = 100;
 
 export async function handler() {
   const config = await loadRuntimeConfig();
@@ -28,21 +35,32 @@ export async function handler() {
 export async function publishParkOutputs(output) {
   if (!process.env.AWS_SAM_OUTPUT_BUCKET) return {};
 
-  const boundaryDirectory = resolve(process.env.BOUNDARIES_DIR ?? 'boundaries');
+  const boundaryDirectory = resolve(process.env.BOUNDARIES_DIR ?? "boundaries");
   const boundaries = await loadBoundaries(boundaryDirectory);
   if (!Object.keys(boundaries).length) return {};
 
-  const features = output.sources.flatMap((source) => source.alerts);
-  const parkOutputs = buildParkOutputs(features, boundaries, output.generatedAt);
-  await Promise.all(Object.entries(parkOutputs).map(([parkId, parkOutput]) => (
-    s3.send(new PutObjectCommand({
-      Bucket: process.env.AWS_SAM_OUTPUT_BUCKET,
-      Key: `alerts/${parkId}.json`,
-      Body: JSON.stringify(parkOutput),
-      ContentType: 'application/geo+json',
-      CacheControl: 'max-age=60',
-    }))
-  )));
+  const features = output.sources.flatMap(
+    (source) => source.parkCandidates ?? source.alerts,
+  );
+  const parkOutputs = buildParkOutputs(
+    features,
+    boundaries,
+    output.generatedAt,
+    output.sourceConfigs,
+  );
+  await Promise.all(
+    Object.entries(parkOutputs).map(([parkId, parkOutput]) =>
+      s3.send(
+        new PutObjectCommand({
+          Bucket: process.env.AWS_SAM_OUTPUT_BUCKET,
+          Key: `alerts/${parkId}.json`,
+          Body: JSON.stringify(parkOutput),
+          ContentType: "application/geo+json",
+          CacheControl: "max-age=60",
+        }),
+      ),
+    ),
+  );
   return parkOutputs;
 }
 
@@ -58,18 +76,29 @@ export async function pollSources(config, persistState = true, options = {}) {
       documentCount: 0,
     };
     try {
-      // const xmlWrapper = 
+      // const xmlWrapper =
       const alerts = await ingestSource(source, ingestion);
-      const currentAlerts = reduceAlertLifecycle(alerts);
-      if (persistState) await persistSourceState(source, 'ok', currentAlerts.length);
-      const result = { id: source.id, status: 'ok', alerts: currentAlerts, ingestion };
+      const parkCandidates = reduceAlertLifecycle(alerts);
+      const currentAlerts = filterSourceFeatures(parkCandidates, source);
+      if (persistState)
+        await persistSourceState(source, "ok", currentAlerts.length);
+      const result = {
+        id: source.id,
+        status: "ok",
+        alerts: currentAlerts,
+        ingestion,
+      };
+      Object.defineProperty(result, "parkCandidates", {
+        value: parkCandidates,
+      });
       if (options.includeIngestedAlerts) result.ingestedAlerts = alerts;
       results.push(result);
     } catch (error) {
-      if (persistState) await persistSourceState(source, 'degraded', 0, error.message);
+      if (persistState)
+        await persistSourceState(source, "degraded", 0, error.message);
       results.push({
         id: source.id,
-        status: 'degraded',
+        status: "degraded",
         alerts: [],
         ingestion,
         error: error.message,
@@ -77,7 +106,11 @@ export async function pollSources(config, persistState = true, options = {}) {
     }
   }
 
-  return { sources: results, generatedAt: new Date().toISOString() };
+  const output = { sources: results, generatedAt: new Date().toISOString() };
+  Object.defineProperty(output, "sourceConfigs", {
+    value: new Map(sources.map((source) => [source.id, source])),
+  });
+  return output;
 }
 
 export async function loadRuntimeConfig() {
@@ -90,12 +123,10 @@ export async function loadRuntimeConfig() {
 }
 
 export function loadLocalConfig(env = process.env) {
-  const required = [
-    'DRUPAL_FEED_SOURCES_URL',
-    'DRUPAL_AGGREGATOR_SECRET',
-  ];
+  const required = ["DRUPAL_FEED_SOURCES_URL", "DRUPAL_AGGREGATOR_SECRET"];
   for (const name of required) {
-    if (!env[name]) throw new Error(`Missing ${name}; copy .env.example to .env and set it.`);
+    if (!env[name])
+      throw new Error(`Missing ${name}; copy .env.example to .env and set it.`);
   }
   return {
     feedSourcesUrl: env.DRUPAL_FEED_SOURCES_URL,
@@ -107,38 +138,92 @@ async function resolveParameter(name) {
   const result = await ssm.send(
     new GetParameterCommand({ Name: name, WithDecryption: true }),
   );
-  return result.Parameter?.Value ?? '';
+  return result.Parameter?.Value ?? "";
 }
 
 export async function fetchFeedSources(config) {
   const response = await fetch(config.feedSourcesUrl, {
     headers: {
-      'X-Cap-Aggregator-Secret': config.aggregatorSecret,
-      accept: 'application/json',
+      "X-Cap-Aggregator-Secret": config.aggregatorSecret,
+      accept: "application/json",
     },
   });
   if (!response.ok) {
-    throw new Error(`Drupal Feed Source request failed: HTTP ${response.status}`);
+    throw new Error(
+      `Drupal Feed Source request failed: HTTP ${response.status}`,
+    );
   }
   return await response.json();
 }
 
 export async function ingestSource(source, ingestion = null) {
-
-  if (source.feedFormat === 'rss' || source.feedFormat === 'atom') {
-    const feed = await fetchText(source.feedUrl, ingestion);
+  if (source.feedFormat === "rss" || source.feedFormat === "atom") {
+    const feed = await fetchText(source.feedUrl, source, ingestion);
     const links = extractCanonicalLinks(feed, source.feedFormat);
     if (ingestion) ingestion.canonicalLinkCount = links.length;
     return await ingestCanonicalDocuments(links, source, ingestion);
   }
 
-  if (source.feedFormat === 'cap-xml') {
-    const alerts = normalizeCapXml(await fetchText(source.feedUrl, ingestion), source);
+  if (source.feedFormat === "cap-xml") {
+    const alerts = normalizeCapXml(
+      await fetchText(source.feedUrl, source, ingestion),
+      source,
+    );
     if (ingestion) ingestion.documentCount = 1;
     return alerts;
-  }  
+  }
+
+  if (
+    source.feedFormat === "dataquoll-geojson" ||
+    source.feedFormat === "dataquoll_geojson"
+  ) {
+    return await ingestDataQuollGeoJson(source, ingestion);
+  }
 
   throw new Error(`Unsupported first-slice feed format: ${source.feedFormat}`);
+}
+
+async function ingestDataQuollGeoJson(source, ingestion) {
+  const url = new URL(source.feedUrl);
+  if (url.searchParams.has("format") && url.searchParams.get("format") !== "geojson") {
+    throw new Error("DataQuoll GeoJSON sources must not request a non-GeoJSON format");
+  }
+  if (!url.searchParams.has("limit")) url.searchParams.set("limit", "500");
+
+  const features = [];
+  const seenCursors = new Set();
+  let nextCursor;
+  let pageCount = 0;
+
+  do {
+    if (pageCount >= dataQuollMaximumPages) {
+      throw new Error(`DataQuoll pagination exceeded ${dataQuollMaximumPages} pages`);
+    }
+    if (nextCursor) {
+      if (seenCursors.has(nextCursor)) {
+        throw new Error("DataQuoll pagination returned a repeated cursor");
+      }
+      seenCursors.add(nextCursor);
+      url.searchParams.set("cursor", nextCursor);
+    }
+
+    const { body } = await fetchJson(url, source, ingestion);
+    validateDataQuollPage(body);
+    features.push(...body.features.map((feature) => normalizeDataQuollFeature(feature, source)));
+    pageCount += 1;
+    nextCursor = body.meta?.next_cursor;
+    if (ingestion) {
+      ingestion.totalCount = body.meta?.total_count;
+      ingestion.dataGeneratedAt = body.meta?.generatedAt;
+      ingestion.attribution = body.attribution;
+    }
+  } while (nextCursor);
+
+  if (ingestion) {
+    ingestion.pageCount = pageCount;
+    ingestion.documentCount = pageCount;
+  }
+  return features;
 }
 
 async function ingestCanonicalDocuments(links, source, ingestion) {
@@ -150,7 +235,7 @@ async function ingestCanonicalDocuments(links, source, ingestion) {
     while (nextLinkIndex < links.length) {
       const link = links[nextLinkIndex++];
       try {
-        const document = await fetchText(link, ingestion);
+        const document = await fetchText(link, source, ingestion);
         documents.push(...normalizeCapXml(document, source));
       } catch (error) {
         failures.push({ url: link, error: error.message });
@@ -170,41 +255,124 @@ async function ingestCanonicalDocuments(links, source, ingestion) {
   if (failures.length) {
     const firstFailure = failures[0];
     throw new Error(
-      `Failed to ingest ${failures.length} of ${links.length} canonical documents; `
-      + `${firstFailure.url}: ${firstFailure.error}`,
+      `Failed to ingest ${failures.length} of ${links.length} canonical documents; ` +
+        `${firstFailure.url}: ${firstFailure.error}`,
     );
   }
 
   return documents;
 }
 
-async function fetchText(url, ingestion = null) {
-  const response = await fetch(url);
+async function fetchText(url, source, ingestion = null) {
+  const response = await fetchSource(url, source);
   if (!response.ok) {
     throw new Error(`Feed request failed: HTTP ${response.status} ${url}`);
   }
   const sourceText = await response.text();
   if (ingestion) {
     ingestion.fetches ??= [];
-    ingestion.fetches.push({ url, bytes: Buffer.byteLength(sourceText, 'utf8') });
+    ingestion.fetches.push({
+      url,
+      bytes: Buffer.byteLength(sourceText, "utf8"),
+    });
   }
   return sourceText;
 }
 
+async function fetchJson(url, source, ingestion = null) {
+  const response = await fetchSource(url, source);
+  if (!response.ok) {
+    throw new Error(`Feed request failed: HTTP ${response.status} ${url}`);
+  }
+  const sourceText = await response.text();
+  if (ingestion) {
+    ingestion.fetches ??= [];
+    ingestion.fetches.push({
+      url: String(url),
+      bytes: Buffer.byteLength(sourceText, "utf8"),
+    });
+  }
+  try {
+    return { body: JSON.parse(sourceText), headers: response.headers };
+  } catch {
+    throw new Error(`Feed response was not valid JSON: ${url}`);
+  }
+}
+
+function fetchSource(url, source) {
+  const headers = source.credential
+    ? { authorization: `Bearer ${source.credential}` }
+    : undefined;
+  return fetch(String(url), { headers });
+}
+
+function validateDataQuollPage(page) {
+  if (page?.type !== "FeatureCollection" || !Array.isArray(page.features)) {
+    throw new Error("DataQuoll response was not an incident FeatureCollection");
+  }
+}
+
+function normalizeDataQuollFeature(feature, source) {
+  if (
+    feature?.type !== "Feature" ||
+    !feature.id ||
+    !["Point", "Polygon", "MultiPolygon"].includes(feature.geometry?.type)
+  ) {
+    throw new Error("DataQuoll incident was missing a stable ID or supported geometry");
+  }
+  const properties = feature.properties ?? {};
+  const origin = properties.source ?? {};
+  return {
+    type: "Feature",
+    id: feature.id,
+    geometry: feature.geometry,
+    properties: {
+      source: {
+        feedSourceId: source.id,
+        originState: origin.state,
+        originAgency: origin.agency,
+        originFeedId: origin.feedId,
+      },
+      identifier: feature.id,
+      sender: origin.agency,
+      status: properties.status,
+      sent: properties.timestamps?.reported,
+      effective: properties.timestamps?.updated,
+      expires: properties.details?.expires,
+      event: properties.eventType,
+      headline: properties.title,
+      description: properties.details?.description,
+      severity: properties.severity,
+      certainty: properties.certainty,
+      urgency: properties.urgency,
+      warningLevel: properties.warningLevel,
+      featureType: properties.featureType,
+      location: properties.location,
+      fetched: properties.timestamps?.fetched,
+      retracted: properties.retraction?.retracted === true,
+      retractedAt: properties.retraction?.retractedAt,
+      retractionReason: properties.retraction?.reason,
+      link: source.feedUrl,
+    },
+  };
+}
+
 export function extractCanonicalLinks(xml, format) {
   const parsed = xmlParser.parse(xml);
-  
-  if (format === 'rss') {
+
+  if (format === "rss") {
     const items = asArray(parsed.rss?.channel?.item);
-    const links = items.map((item) => item.link).filter(Boolean);  
+    const links = items.map((item) => item.link).filter(Boolean);
     return links;
   }
-  
+
   const entries = asArray(parsed.feed?.entry);
   return entries
     .map((entry) => {
       const links = asArray(entry.link);
-      return links.find((link) => !link['@_rel'] || link['@_rel'] === 'alternate')?.['@_href'];
+      return links.find(
+        (link) => !link["@_rel"] || link["@_rel"] === "alternate",
+      )?.["@_href"];
     })
     .filter(Boolean);
 }
@@ -214,7 +382,7 @@ export function normalizeCapXml(xml, source) {
   const root = parsed.alert ? parsed : parsed[source.capXmlRootElement];
   const alerts = asArray(root?.alert ?? root);
   if (!alerts.length) {
-    throw new Error('CAP XML document contains no consumable alert elements');
+    throw new Error("CAP XML document contains no consumable alert elements");
   }
 
   return alerts.map((alert) => normalizeAlert(alert, source));
@@ -229,12 +397,17 @@ export function reduceAlertLifecycle(features, now = new Date()) {
     const properties = feature.properties ?? {};
     const references = parseReferences(properties.references);
 
-    if (properties.msgType === 'Cancel') {
+    if (properties.retracted) {
+      cancelled.add(properties.identifier ?? feature.id);
+      continue;
+    }
+
+    if (properties.msgType === "Cancel") {
       references.forEach((identifier) => cancelled.add(identifier));
       continue;
     }
 
-    if (properties.msgType === 'Update') {
+    if (properties.msgType === "Update") {
       references.forEach((identifier) => superseded.add(identifier));
     }
 
@@ -244,7 +417,10 @@ export function reduceAlertLifecycle(features, now = new Date()) {
   }
 
   return [...active.entries()]
-    .filter(([identifier]) => !cancelled.has(identifier) && !superseded.has(identifier))
+    .filter(
+      ([identifier]) =>
+        !cancelled.has(identifier) && !superseded.has(identifier),
+    )
     .map(([, feature]) => feature);
 }
 
@@ -253,7 +429,7 @@ export function parseReferences(value) {
   return String(value)
     .trim()
     .split(/\s+/u)
-    .map((reference) => reference.split(',')[1] ?? reference)
+    .map((reference) => reference.split(",")[1] ?? reference)
     .filter(Boolean);
 }
 
@@ -265,15 +441,21 @@ export function isExpired(value, now = new Date()) {
 
 function normalizeAlert(alert, source) {
   const info = asArray(alert.info)[0] ?? {};
-  const geometries = asArray(info.area).flatMap((area) => capAreaGeometry(area));
+  const geometries = asArray(info.area).flatMap((area) =>
+    capAreaGeometry(area),
+  );
   return {
-    type: 'Feature',
+    type: "Feature",
     id: alert.identifier,
-    geometry: geometries.length === 1
-      ? geometries[0].geometry
-      : geometries.length > 1
-        ? { type: 'GeometryCollection', geometries: geometries.map((item) => item.geometry) }
-        : null,
+    geometry:
+      geometries.length === 1
+        ? geometries[0].geometry
+        : geometries.length > 1
+          ? {
+              type: "GeometryCollection",
+              geometries: geometries.map((item) => item.geometry),
+            }
+          : null,
     properties: {
       source: { feedSourceId: source.id },
       identifier: alert.identifier,
@@ -283,6 +465,7 @@ function normalizeAlert(alert, source) {
       references: alert.references,
       sent: alert.sent,
       event: info.event,
+      category: asArray(info.category),
       headline: info.headline,
       description: info.description,
       severity: info.severity,
@@ -304,7 +487,10 @@ async function persistSourceState(source, status, alertCount, error) {
   };
   if (error) item.error = { S: error.slice(0, 1000) };
   await dynamo.send(
-    new PutItemCommand({ TableName: process.env.AWS_SAM_FEED_STATE_TABLE, Item: item }),
+    new PutItemCommand({
+      TableName: process.env.AWS_SAM_FEED_STATE_TABLE,
+      Item: item,
+    }),
   );
 }
 

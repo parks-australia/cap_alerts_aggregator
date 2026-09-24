@@ -1,9 +1,10 @@
-import booleanIntersects from '@turf/boolean-intersects';
-import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
-import circle from '@turf/circle';
-import { point, polygon } from '@turf/helpers';
-import { readdir, readFile } from 'node:fs/promises';
-import { basename, extname, join } from 'node:path';
+import booleanIntersects from "@turf/boolean-intersects";
+import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
+import circle from "@turf/circle";
+import { point, polygon } from "@turf/helpers";
+import { readdir, readFile } from "node:fs/promises";
+import { basename, extname, join } from "node:path";
+import { filterParkFeatures } from "./filters.js";
 
 const EARTH_RADIUS_KM = 6371;
 
@@ -25,9 +26,11 @@ export function capAreaGeometry(area) {
     const parsed = parseCapCircle(value);
     if (parsed) {
       const center = point([parsed.longitude, parsed.latitude]);
-      geometries.push(parsed.radiusKm === 0
-        ? center
-        : circle(center, parsed.radiusKm, { steps: 64, units: 'kilometers' }));
+      geometries.push(
+        parsed.radiusKm === 0
+          ? center
+          : circle(center, parsed.radiusKm, { steps: 64, units: "kilometers" }),
+      );
     }
   }
 
@@ -40,36 +43,43 @@ export function parseCapPolygon(value) {
     .trim()
     .split(/\s+/u)
     .map((pair) => {
-      const [latitude, longitude] = pair.split(',').map(Number);
+      const [latitude, longitude] = pair.split(",").map(Number);
       return Number.isFinite(latitude) && Number.isFinite(longitude)
         ? [longitude, latitude]
         : null;
     });
 
-  if (coordinates.some((coordinate) => coordinate === null) || coordinates.length < 3) {
+  if (
+    coordinates.some((coordinate) => coordinate === null) ||
+    coordinates.length < 3
+  ) {
     return null;
   }
 
   const first = coordinates[0];
   const last = coordinates.at(-1);
-  if (first[0] !== last[0] || first[1] !== last[1]) coordinates.push([...first]);
+  if (first[0] !== last[0] || first[1] !== last[1])
+    coordinates.push([...first]);
   return coordinates;
 }
 
 export function parseCapCircle(value) {
-  const match = String(value ?? '').trim().match(/^(-?[\d.]+),\s*(-?[\d.]+)\s+([\d.]+)$/u);
+  const match = String(value ?? "")
+    .trim()
+    .match(/^(-?[\d.]+),\s*(-?[\d.]+)\s+([\d.]+)$/u);
   if (!match) return null;
 
   const [, latitude, longitude, radiusKm] = match.map(Number);
   if (
-    ![latitude, longitude, radiusKm].every(Number.isFinite)
-    || latitude < -90
-    || latitude > 90
-    || longitude < -180
-    || longitude > 180
-    || radiusKm < 0
-    || radiusKm > EARTH_RADIUS_KM
-  ) return null;
+    ![latitude, longitude, radiusKm].every(Number.isFinite) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180 ||
+    radiusKm < 0 ||
+    radiusKm > EARTH_RADIUS_KM
+  )
+    return null;
   return { latitude, longitude, radiusKm };
 }
 
@@ -83,24 +93,35 @@ export function matchingParks(alertGeometry, boundaries) {
 }
 
 export function geometryMatchesBoundary(alertGeometry, boundary) {
-  if (!alertGeometry || !boundary || !alertGeometry.geometry?.type) return false;
-  if (boundary.type === 'FeatureCollection') {
-    return boundary.features.some((feature) => geometryMatchesBoundary(alertGeometry, feature));
+  if (!alertGeometry || !boundary || !alertGeometry.geometry?.type)
+    return false;
+  if (boundary.type === "FeatureCollection") {
+    return boundary.features.some((feature) =>
+      geometryMatchesBoundary(alertGeometry, feature),
+    );
   }
   if (!boundary.geometry?.type) return false;
-  if (alertGeometry.geometry?.type === 'GeometryCollection') {
-    return alertGeometry.geometry?.geometries.some((geometry) => (
-      geometryMatchesBoundary({ type: 'Feature', properties: {}, geometry }, boundary)
-    ));
+  if (alertGeometry.geometry?.type === "GeometryCollection") {
+    return alertGeometry.geometry?.geometries.some((geometry) =>
+      geometryMatchesBoundary(
+        { type: "Feature", properties: {}, geometry },
+        boundary,
+      ),
+    );
   }
-  if (alertGeometry.geometry?.type === 'Point' && boundary.geometry?.type === 'Polygon') {
+  if (
+    alertGeometry.geometry?.type === "Point" &&
+    boundary.geometry?.type === "Polygon"
+  ) {
     return booleanPointInPolygon(alertGeometry, boundary);
   }
   return booleanIntersects(alertGeometry, boundary);
 }
 
 export function assignFeaturesToParks(features, boundaries) {
-  const output = Object.fromEntries(Object.keys(boundaries).map((parkId) => [parkId, []]));
+  const output = Object.fromEntries(
+    Object.keys(boundaries).map((parkId) => [parkId, []]),
+  );
 
   for (const feature of features) {
     for (const parkId of matchingParks(feature, boundaries)) {
@@ -116,34 +137,45 @@ export async function loadBoundaries(directory) {
   try {
     filenames = await readdir(directory);
   } catch (error) {
-    if (error.code === 'ENOENT') return boundaries;
+    if (error.code === "ENOENT") return boundaries;
     throw error;
   }
 
-    // This expects the naming syntax to be "<parkId>-boundary[_<resolution>m].geojson" or "<parkId>_boundary.geojson", e.g. uktnp-boundary_10m.geojson
+  // This expects the naming syntax to be "<parkId>-boundary[_<resolution>m].geojson" or "<parkId>_boundary.geojson", e.g. uktnp-boundary_10m.geojson
   for (const filename of filenames) {
-    if (extname(filename).toLowerCase() !== '.geojson') continue;
+    if (extname(filename).toLowerCase() !== ".geojson") continue;
     const parkId = basename(filename, extname(filename))
-      .replace(/-boundary(?:_\d+m)?$/u, '')
-      .replace(/_boundaries$/u, '');
-    const boundary = JSON.parse(await readFile(join(directory, filename), 'utf8'));
-    boundaries[parkId] = boundary.type === 'Feature' || boundary.type === 'FeatureCollection'
-      ? boundary
-      : { type: 'Feature', properties: { parkId }, geometry: boundary };
+      .replace(/-boundary(?:_\d+m)?$/u, "")
+      .replace(/_boundaries$/u, "");
+    const boundary = JSON.parse(
+      await readFile(join(directory, filename), "utf8"),
+    );
+    boundaries[parkId] =
+      boundary.type === "Feature" || boundary.type === "FeatureCollection"
+        ? boundary
+        : { type: "Feature", properties: { parkId }, geometry: boundary };
   }
   return boundaries;
 }
 
-export function buildParkOutputs(features, boundaries, generatedAt = new Date().toISOString()) {
+export function buildParkOutputs(
+  features,
+  boundaries,
+  generatedAt = new Date().toISOString(),
+  sourceConfigs = new Map(),
+) {
   const assigned = assignFeaturesToParks(features, boundaries);
   return Object.fromEntries(
-    Object.entries(assigned).map(([parkId, parkFeatures]) => [parkId, {
-      type: 'FeatureCollection',
-      schemaVersion: 1,
-      park: parkId,
-      generatedAt,
-      features: parkFeatures,
-    }]),
+    Object.entries(assigned).map(([parkId, parkFeatures]) => [
+      parkId,
+      {
+        type: "FeatureCollection",
+        schemaVersion: 1,
+        park: parkId,
+        generatedAt,
+        features: filterParkFeatures(parkFeatures, parkId, sourceConfigs),
+      },
+    ]),
   );
 }
 

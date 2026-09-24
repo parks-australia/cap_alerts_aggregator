@@ -61,7 +61,10 @@ npm run local:poll
 The local runner calls Drupal, fetches the configured RSS/Atom/CAP-XML sources, skips DynamoDB/SSM,
 and writes the result to `.local-output/aggregator.json`. That local file includes both
 `ingestedAlerts` (normalized before expiry/cancellation reduction) and `alerts` (after lifecycle
-reduction). If `BOUNDARIES_DIR` contains boundary
+reduction and the source's configured filters). The aggregator applies these filters locally after
+retrieval; it does not append them as query parameters to the feed URL. Per-park overrides are
+applied only when building each park's output, after geographic matching; an override can be either
+more or less restrictive than the source default. If `BOUNDARIES_DIR` contains boundary
 files, it also writes one FeatureCollection per park, such as `.local-output/parks/knp.json`.
 Only alert features with polygon/circle-derived geometry intersecting a supplied park boundary are
 included in that park's file; alerts with no usable geometry are culled from per-park output.
@@ -82,7 +85,7 @@ jq '.sources[] | {
 ```
 
 `ingestedAlerts` contains normalized alerts before lifecycle reduction. `alerts` contains the
-remaining alerts after expiry, cancel, and update handling. A degraded source includes `error`;
+source-filtered alerts remaining after expiry, cancel, and update handling. A degraded source includes `error`;
 successful RSS/Atom sources with `canonicalLinks: 0` returned an empty feed, while a nonzero link
 count followed by an error usually means the linked documents were not CAP XML.
 
