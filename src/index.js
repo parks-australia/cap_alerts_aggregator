@@ -11,6 +11,7 @@ import {
 import { filterSourceFeatures } from "./filters.js";
 import { resolve } from "node:path";
 import { URL } from "node:url";
+import { performance } from "node:perf_hooks";
 
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
@@ -67,6 +68,7 @@ export async function publishParkOutputs(output) {
 export async function pollSources(config, persistState = true, options = {}) {
   const { sources } = await fetchFeedSources(config);
   const results = [];
+  const totalFetchStartedAt = performance.now();
 
   for (const source of sources) {
     const ingestion = {
@@ -75,9 +77,11 @@ export async function pollSources(config, persistState = true, options = {}) {
       canonicalLinkCount: 0,
       documentCount: 0,
     };
+    const fetchStartedAt = performance.now();
     try {
       // const xmlWrapper =
       const alerts = await ingestSource(source, ingestion);
+      ingestion.fetchDurationMs = Math.round(performance.now() - fetchStartedAt);
       const parkCandidates = reduceAlertLifecycle(alerts);
       const currentAlerts = filterSourceFeatures(parkCandidates, source);
       if (persistState)
@@ -94,6 +98,7 @@ export async function pollSources(config, persistState = true, options = {}) {
       if (options.includeIngestedAlerts) result.ingestedAlerts = alerts;
       results.push(result);
     } catch (error) {
+      ingestion.fetchDurationMs = Math.round(performance.now() - fetchStartedAt);
       if (persistState)
         await persistSourceState(source, "degraded", 0, error.message);
       results.push({
@@ -106,7 +111,11 @@ export async function pollSources(config, persistState = true, options = {}) {
     }
   }
 
-  const output = { sources: results, generatedAt: new Date().toISOString() };
+  const output = {
+    sources: results,
+    generatedAt: new Date().toISOString(),
+    totalFetchDurationMs: Math.round(performance.now() - totalFetchStartedAt),
+  };
   Object.defineProperty(output, "sourceConfigs", {
     value: new Map(sources.map((source) => [source.id, source])),
   });

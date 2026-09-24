@@ -139,8 +139,11 @@ describe("CAP ingestion first slice", () => {
     expect(output.sources[0].ingestedAlerts).toHaveLength(1);
     expect(output.sources[0].alerts).toHaveLength(0);
     expect(output.sources[0].ingestion.documentCount).toBe(1);
+    expect(output.sources[0].ingestion.fetchDurationMs).toEqual(expect.any(Number));
     expect(output.sources[1].status).toBe("degraded");
+    expect(output.sources[1].ingestion.fetchDurationMs).toEqual(expect.any(Number));
     expect(output.sources[1].error).toMatch(/Unsupported/);
+    expect(output.totalFetchDurationMs).toEqual(expect.any(Number));
     vi.unstubAllGlobals();
   });
 
