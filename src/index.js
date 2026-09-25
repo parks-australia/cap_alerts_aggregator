@@ -90,6 +90,7 @@ export async function pollSources(config, persistState = true, options = {}) {
         status: "ok",
         alerts: currentAlerts,
         ingestion,
+        filters: filterDiagnostics(source),
       };
       Object.defineProperty(result, "parkCandidates", {
         value: parkCandidates,
@@ -105,6 +106,7 @@ export async function pollSources(config, persistState = true, options = {}) {
         status: "degraded",
         alerts: [],
         ingestion,
+        filters: filterDiagnostics(source),
         error: error.message,
       });
     }
@@ -119,6 +121,31 @@ export async function pollSources(config, persistState = true, options = {}) {
     value: new Map(sources.map((source) => [source.id, source])),
   });
   return output;
+}
+
+function filterDiagnostics(source) {
+  return {
+    minSeverity: source.minSeverity ?? "Unknown",
+    minCertainty: source.minCertainty ?? "Unknown",
+    minUrgency: source.minUrgency ?? "Unknown",
+    categoryAllowlist: source.categoryAllowlist ?? [],
+    msgtypeDenylist: source.msgtypeDenylist ?? [],
+    agencyAllowlist: source.agencyAllowlist ?? [],
+    agencyDenylist: source.agencyDenylist ?? [],
+    requireGeometry: source.requireGeometry ?? false,
+    overrides: (source.parkOverrides ?? []).map((override, index) => ({
+      id: `override_${index + 1}`,
+      park: override.parkId ?? override.gatsby_endpoint,
+      minSeverity: override.minSeverity ?? override.min_severity ?? "",
+      minCertainty: override.minCertainty ?? override.min_certainty ?? "",
+      minUrgency: override.minUrgency ?? override.min_urgency ?? "",
+      categoryAllowlist: override.categoryAllowlist ?? override.category_allowlist ?? "",
+      msgtypeDenylist: override.msgtypeDenylist ?? override.msgtype_denylist ?? "",
+      agencyAllowlist: override.agencyAllowlist ?? override.agency_allowlist ?? "",
+      agencyDenylist: override.agencyDenylist ?? override.agency_denylist ?? "",
+      requireGeometry: override.requireGeometry ?? "",
+    })),
+  };
 }
 
 export async function loadRuntimeConfig() {

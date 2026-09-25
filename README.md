@@ -12,6 +12,7 @@ Standalone Node.js AWS SAM service for polling CAP Feed Sources configured in Dr
 - RSS and Atom canonical-link extraction.
 - CAP XML parsing with external entity processing disabled.
 - Normalized GeoJSON Feature-shaped alert objects.
+- Provider-specific ingestion adapters registered separately from generic CAP ingestion.
 - Optional per-park GeoJSON boundary matching and FeatureCollection output.
 - Unit tests using Vitest.
 
@@ -63,8 +64,10 @@ and writes the result to `.local-output/aggregator.json`. That local file includ
 `ingestedAlerts` (normalized before expiry/cancellation reduction) and `alerts` (after lifecycle
 reduction and the source's configured filters). The aggregator applies these filters locally after
 retrieval; it does not append them as query parameters to the feed URL. Per-park overrides are
-applied only when building each park's output, after geographic matching; an override can be either
-more or less restrictive than the source default. If `BOUNDARIES_DIR` contains boundary
+applied only when building each park's output, after geographic matching. A populated override field
+replaces its source field for that park; a blank override field inherits the source field. A park with
+no override, or an override with every field blank, therefore uses the source filters. If
+`BOUNDARIES_DIR` contains boundary
 files, it also writes one FeatureCollection per park, such as `.local-output/parks/knp.json`.
 Only alert features with polygon/circle-derived geometry intersecting a supplied park boundary are
 included in that park's file; alerts with no usable geometry are culled from per-park output.

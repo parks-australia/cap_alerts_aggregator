@@ -21,9 +21,18 @@ function mergeParkOverride(source, parkId) {
 
   return {
     ...source,
-    minSeverity: override.minSeverity ?? override.min_severity ?? source.minSeverity,
-    minCertainty: override.minCertainty ?? override.min_certainty ?? source.minCertainty,
-    minUrgency: override.minUrgency ?? override.min_urgency ?? source.minUrgency,
+    minSeverity: selectScalarOverride(
+      override.minSeverity ?? override.min_severity,
+      source.minSeverity,
+    ),
+    minCertainty: selectScalarOverride(
+      override.minCertainty ?? override.min_certainty,
+      source.minCertainty,
+    ),
+    minUrgency: selectScalarOverride(
+      override.minUrgency ?? override.min_urgency,
+      source.minUrgency,
+    ),
     categoryAllowlist: selectOverride(
       override.categoryAllowlist ?? override.category_allowlist,
       source.categoryAllowlist,
@@ -49,6 +58,10 @@ function mergeParkOverride(source, parkId) {
 function selectOverride(override, base) {
   const values = normalizeList(override);
   return values.length > 0 ? values : base;
+}
+
+function selectScalarOverride(override, base) {
+  return override === undefined || override === null || override === "" ? base : override;
 }
 
 function matchesFilters(feature, filters = {}) {

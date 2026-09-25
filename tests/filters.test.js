@@ -66,4 +66,20 @@ describe("CAP source filters", () => {
       filterParkFeatures(features, "other-park", sourceConfigs).map(({ id }) => id),
     ).toEqual(["severe"]);
   });
+
+  it("inherits a source threshold when the park override field is blank", () => {
+    const source = {
+      minSeverity: "Severe",
+      parkOverrides: [{ parkId: "knp", minSeverity: "" }],
+    };
+    const sourceConfigs = new Map([["source-a", source]]);
+    const features = [
+      feature("moderate", { severity: "Moderate" }),
+      feature("severe", { severity: "Severe" }),
+    ];
+
+    expect(
+      filterParkFeatures(features, "knp", sourceConfigs).map(({ id }) => id),
+    ).toEqual(["severe"]);
+  });
 });

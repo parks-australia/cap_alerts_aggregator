@@ -113,6 +113,13 @@ describe("CAP ingestion first slice", () => {
                 id: "cap",
                 feedFormat: "cap-xml",
                 feedUrl: "https://feed.test/cap.xml",
+                credential: "not-in-output",
+                minSeverity: "Severe",
+                categoryAllowlist: ["Fire"],
+                parkOverrides: [{
+                  parkId: "knp",
+                  minSeverity: "Moderate",
+                }],
               },
               {
                 id: "unsupported",
@@ -140,6 +147,29 @@ describe("CAP ingestion first slice", () => {
     expect(output.sources[0].alerts).toHaveLength(0);
     expect(output.sources[0].ingestion.documentCount).toBe(1);
     expect(output.sources[0].ingestion.fetchDurationMs).toEqual(expect.any(Number));
+    expect(output.sources[0].filters).toEqual({
+      minSeverity: "Severe",
+      minCertainty: "Unknown",
+      minUrgency: "Unknown",
+      categoryAllowlist: ["Fire"],
+      msgtypeDenylist: [],
+      agencyAllowlist: [],
+      agencyDenylist: [],
+      requireGeometry: false,
+      overrides: [{
+        id: "override_1",
+        park: "knp",
+        minSeverity: "Moderate",
+        minCertainty: "",
+        minUrgency: "",
+        categoryAllowlist: "",
+        msgtypeDenylist: "",
+        agencyAllowlist: "",
+        agencyDenylist: "",
+        requireGeometry: "",
+      }],
+    });
+    expect(JSON.stringify(output.sources[0].filters)).not.toContain("not-in-output");
     expect(output.sources[1].status).toBe("degraded");
     expect(output.sources[1].ingestion.fetchDurationMs).toEqual(expect.any(Number));
     expect(output.sources[1].error).toMatch(/Unsupported/);
