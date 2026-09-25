@@ -2,6 +2,14 @@
 
 Standalone Node.js AWS SAM service for polling CAP Feed Sources configured in Drupal and publishing current per-park alert data for Parks Australia websites and future consumers.
 
+## Drupal Dependency
+
+This project requires Drupal to provide Feed Source configuration through the
+[`cap_alerts_aggregator_connector`](../cap_alerts_aggregator_connector/) module.
+The aggregator retrieves enabled source URLs, filters, optional credentials, and
+enabled adaptor data from that module's protected
+`/api/cap-alerts/feed-sources` endpoint; it does not manage Feed Sources itself.
+
 ## Current vertical slice
 
 - Node.js 22 Lambda invoked by EventBridge every minute.
