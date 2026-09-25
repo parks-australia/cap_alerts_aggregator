@@ -48,7 +48,7 @@ describe("CAP source filters", () => {
     const source = {
       minSeverity: "Severe",
       parkOverrides: [
-        { gatsby_endpoint: "permissive-park", min_severity: "Minor" },
+        { parkId: "permissive-park", minSeverity: "Minor" },
       ],
     };
     const sourceConfigs = new Map([["source-a", source]]);

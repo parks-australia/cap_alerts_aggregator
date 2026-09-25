@@ -15,27 +15,34 @@ export function filterParkFeatures(features, parkId, sourceConfigs) {
 
 function mergeParkOverride(source, parkId) {
   const override = source?.parkOverrides?.find(
-    (candidate) => candidate.gatsby_endpoint === parkId,
+    (candidate) => (candidate.parkId ?? candidate.gatsby_endpoint) === parkId,
   );
   if (!override) return source;
 
   return {
     ...source,
-    minSeverity: override.min_severity || source.minSeverity,
-    minCertainty: override.min_certainty || source.minCertainty,
-    minUrgency: override.min_urgency || source.minUrgency,
+    minSeverity: override.minSeverity ?? override.min_severity ?? source.minSeverity,
+    minCertainty: override.minCertainty ?? override.min_certainty ?? source.minCertainty,
+    minUrgency: override.minUrgency ?? override.min_urgency ?? source.minUrgency,
     categoryAllowlist: selectOverride(
-      override.category_allowlist,
+      override.categoryAllowlist ?? override.category_allowlist,
       source.categoryAllowlist,
     ),
+    msgtypeDenylist: selectOverride(
+      override.msgtypeDenylist ?? override.msgtype_denylist,
+      source.msgtypeDenylist,
+    ),
     agencyAllowlist: selectOverride(
-      override.agency_allowlist,
+      override.agencyAllowlist ?? override.agency_allowlist,
       source.agencyAllowlist,
     ),
     agencyDenylist: selectOverride(
-      override.agency_denylist,
+      override.agencyDenylist ?? override.agency_denylist,
       source.agencyDenylist,
     ),
+    requireGeometry: override.requireGeometry === '' || override.requireGeometry === undefined
+      ? source.requireGeometry
+      : override.requireGeometry,
   };
 }
 
