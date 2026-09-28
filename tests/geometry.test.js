@@ -124,6 +124,32 @@ describe("CAP geometry normalization", () => {
     expect(outputs.parkA.features).toHaveLength(1);
   });
 
+  it("publishes source health and attribution metadata", () => {
+    const alert = point([0, 0], {
+      source: { feedSourceId: "dataquoll" },
+      parkIds: ["parkA"],
+    });
+    const outputs = buildParkOutputs(
+      [alert],
+      { parkA: polygon([[[10, 10], [11, 10], [11, 11], [10, 10]]]) },
+      "2026-09-28T00:00:00.000Z",
+      new Map([["dataquoll", {}]]),
+      [{
+        id: "dataquoll",
+        status: "ok",
+        ingestion: { attribution: "https://example.test/attribution" },
+      }],
+    );
+
+    expect(outputs.parkA.sources).toEqual([{
+      id: "dataquoll",
+      status: "ok",
+      lastSuccess: "2026-09-28T00:00:00.000Z",
+    }]);
+    expect(outputs.parkA.attribution).toEqual(["https://example.test/attribution"]);
+    expect(outputs.parkA.features).toHaveLength(1);
+  });
+
   it("loads and culls against the supplied anbg and bnp boundary assets", async () => {
     const boundaries = await loadBoundaries(resolve("assets/boundary_data"));
     expect(Object.keys(boundaries).sort()).toEqual([

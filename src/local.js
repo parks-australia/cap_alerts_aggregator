@@ -29,6 +29,7 @@ if (process.env.BOUNDARIES_DIR !== "none") {
     boundaries,
     output.generatedAt,
     output.sourceConfigs,
+    output.sources,
   );
   const outputDirectory = resolve(
     process.env.LOCAL_OUTPUT_DIR ?? ".local-output/parks",

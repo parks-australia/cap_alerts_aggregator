@@ -7,6 +7,7 @@ import {
   buildParkOutputs,
   capAreaGeometry,
   loadBoundaries,
+  parseCapCircle,
 } from "./geometry.js";
 import { filterSourceFeatures } from "./filters.js";
 import { resolve } from "node:path";
@@ -47,6 +48,7 @@ export async function publishParkOutputs(output) {
     boundaries,
     output.generatedAt,
     output.sourceConfigs,
+    output.sources,
   );
   await Promise.all(
     Object.entries(parkOutputs).map(([parkId, parkOutput]) =>
@@ -226,7 +228,7 @@ async function ingestCanonicalDocuments(links, source, ingestion) {
       const link = links[nextLinkIndex++];
       try {
         const document = await fetchText(link, source, ingestion);
-        documents.push(...normalizeCapXml(document, source));
+        documents.push(...normalizeCapXml(document, { ...source, canonicalUrl: link }));
       } catch (error) {
         failures.push({ url: link, error: error.message });
       }
@@ -381,7 +383,8 @@ export function isExpired(value, now = new Date()) {
 
 function normalizeAlert(alert, source) {
   const info = asArray(alert.info)[0] ?? {};
-  const geometries = asArray(info.area).flatMap((area) =>
+  const areas = asArray(info.area);
+  const geometries = areas.flatMap((area) =>
     capAreaGeometry(area),
   );
   return {
@@ -398,8 +401,10 @@ function normalizeAlert(alert, source) {
           : null,
     properties: {
       source: { feedSourceId: source.id },
+      sourceType: source.feedFormat,
       identifier: alert.identifier,
       sender: alert.sender,
+      senderName: info.senderName,
       status: alert.status,
       msgType: alert.msgType,
       references: alert.references,
@@ -408,14 +413,38 @@ function normalizeAlert(alert, source) {
       category: asArray(info.category),
       headline: info.headline,
       description: info.description,
+      instruction: info.instruction,
       severity: info.severity,
       certainty: info.certainty,
       urgency: info.urgency,
       effective: info.effective,
       expires: info.expires,
-      link: source.feedUrl,
+      areaDesc: areas.map((area) => area.areaDesc).filter(Boolean),
+      circles: areas.flatMap((area) =>
+        asArray(area.circle)
+          .map(parseCircleMetadata)
+          .filter(Boolean),
+      ),
+      locationIds: parameterValues(info, "ParksAustraliaLocationUUID"),
+      parkIds: parameterValues(info, "ParksAustraliaParkId"),
+      link: info.web ?? source.canonicalUrl ?? source.feedUrl,
     },
   };
+}
+
+function parseCircleMetadata(value) {
+  const parsed = parseCapCircle(value);
+  if (!parsed) return null;
+  const { latitude, longitude, radiusKm } = parsed;
+  return { center: [longitude, latitude], radiusKm };
+}
+
+function parameterValues(info, valueName) {
+  return asArray(info.parameter)
+    .filter((parameter) => parameter?.valueName === valueName)
+    .flatMap((parameter) => String(parameter.value ?? "").split(","))
+    .map((value) => value.trim())
+    .filter(Boolean);
 }
 
 async function persistSourceState(source, status, alertCount, error) {

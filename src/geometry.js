@@ -124,7 +124,11 @@ export function assignFeaturesToParks(features, boundaries) {
   );
 
   for (const feature of features) {
-    for (const parkId of matchingParks(feature, boundaries)) {
+    const explicitParkIds = feature.properties?.parkIds ?? [];
+    const parkIds = explicitParkIds.length
+      ? explicitParkIds.filter((parkId) => Object.hasOwn(boundaries, parkId))
+      : matchingParks(feature, boundaries);
+    for (const parkId of parkIds) {
       output[parkId].push(feature);
     }
   }
@@ -163,8 +167,22 @@ export function buildParkOutputs(
   boundaries,
   generatedAt = new Date().toISOString(),
   sourceConfigs = new Map(),
+  sourceResults = [],
 ) {
   const assigned = assignFeaturesToParks(features, boundaries);
+  const sources = sourceResults.map((source) => ({
+    id: source.id,
+    status: source.status,
+    lastSuccess: source.status === "ok" ? generatedAt : null,
+  }));
+  const attribution = [
+    ...new Set(
+      sourceResults
+        .map((source) => source.ingestion?.attribution)
+        .flat()
+        .filter(Boolean),
+    ),
+  ];
   return Object.fromEntries(
     Object.entries(assigned).map(([parkId, parkFeatures]) => [
       parkId,
@@ -173,6 +191,8 @@ export function buildParkOutputs(
         schemaVersion: 1,
         park: parkId,
         generatedAt,
+        sources,
+        attribution,
         features: filterParkFeatures(parkFeatures, parkId, sourceConfigs),
       },
     ]),

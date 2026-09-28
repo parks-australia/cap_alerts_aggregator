@@ -72,6 +72,7 @@ function normalizeFeature(feature, source) {
         originAgency: origin.agency,
         originFeedId: origin.feedId,
       },
+      sourceType: source.feedFormat,
       identifier: feature.id,
       sender: origin.agency,
       status: properties.status,
@@ -91,6 +92,8 @@ function normalizeFeature(feature, source) {
       retracted: properties.retraction?.retracted === true,
       retractedAt: properties.retraction?.retractedAt,
       retractionReason: properties.retraction?.reason,
+      locationIds: [],
+      parkIds: [],
       link: source.feedUrl,
     },
   };

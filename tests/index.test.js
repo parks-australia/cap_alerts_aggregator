@@ -55,6 +55,36 @@ describe("CAP ingestion first slice", () => {
     expect(alert.geometry).toBeNull();
   });
 
+  it("normalizes the versioned frontend contract fields from CAP", () => {
+    const enrichedXml = capXml.replace(
+      "    <headline>Test alert</headline>",
+      `    <senderName>Parks Australia</senderName>
+    <headline>Test alert</headline>
+    <instruction>Leave the area.</instruction>
+    <web>https://example.test/alert/sender-1</web>
+    <parameter><valueName>ParksAustraliaLocationUUID</valueName><value>uuid-1,uuid-2</value></parameter>
+    <parameter><valueName>ParksAustraliaLocationUUID</valueName><value>uuid-3</value></parameter>
+    <parameter><valueName>ParksAustraliaParkId</valueName><value>knp</value></parameter>
+    <area><areaDesc>North precinct</areaDesc><circle>-13.1,132.4 5</circle></area>`,
+    );
+    const [alert] = normalizeCapXml(enrichedXml, {
+      id: "drupal",
+      feedFormat: "cap-xml",
+      feedUrl: "https://example.test/feed.xml",
+    });
+
+    expect(alert.properties).toMatchObject({
+      sourceType: "cap-xml",
+      senderName: "Parks Australia",
+      instruction: "Leave the area.",
+      areaDesc: ["North precinct"],
+      circles: [{ center: [132.4, -13.1], radiusKm: 5 }],
+      locationIds: ["uuid-1", "uuid-2", "uuid-3"],
+      parkIds: ["knp"],
+      link: "https://example.test/alert/sender-1",
+    });
+  });
+
   it("removes expired alerts", () => {
     const [alert] = normalizeCapXml(capXml, {
       id: "source",
