@@ -334,4 +334,54 @@ describe("CAP ingestion first slice", () => {
     ]);
     vi.unstubAllGlobals();
   });
+
+  it("reconciles successful polls and recovers degraded last-known-good alerts", async () => {
+    const previousFeature = {
+      type: "Feature",
+      id: "cached-alert",
+      geometry: null,
+      properties: { identifier: "cached-alert", degraded: false },
+    };
+    const previousState = {
+      lastSuccess: "2026-09-27T00:00:00.000Z",
+      records: [{ identifier: "cached-alert", feature: previousFeature, missedPolls: 0 }],
+    };
+    const stateStore = {
+      load: vi.fn(async () => previousState),
+      saveSuccess: vi.fn(async () => {}),
+      saveFailure: vi.fn(async () => {}),
+    };
+    const source = {
+      id: "recoverable",
+      feedFormat: "cap-xml",
+      feedUrl: "https://feed.test/cap.xml",
+    };
+    vi.stubGlobal("fetch", vi.fn(async (url) => {
+      if (url === "https://drupal.test/sources") {
+        return { ok: true, json: async () => ({ sources: [source] }) };
+      }
+      throw new TypeError("fetch failed");
+    }));
+
+    const output = await pollSources(
+      { feedSourcesUrl: "https://drupal.test/sources", aggregatorSecret: "secret" },
+      true,
+      { stateStore },
+    );
+
+    expect(output.sources[0]).toMatchObject({
+      status: "degraded",
+      lastSuccess: previousState.lastSuccess,
+      alerts: [{ properties: { identifier: "cached-alert", degraded: true } }],
+    });
+    expect(stateStore.saveFailure).toHaveBeenCalledWith(
+      "recoverable",
+      "fetch failed",
+      expect.any(String),
+      previousState,
+    );
+    expect(stateStore.saveSuccess).not.toHaveBeenCalled();
+    expect(previousState.records[0].missedPolls).toBe(0);
+    vi.unstubAllGlobals();
+  });
 });

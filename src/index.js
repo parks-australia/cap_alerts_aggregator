@@ -1,5 +1,5 @@
 import { XMLParser } from "fast-xml-parser";
-import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
 import { Buffer } from "node:buffer";
@@ -13,6 +13,12 @@ import { filterSourceFeatures } from "./filters.js";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { sourceAdapters } from "./adapters/index.js";
+import {
+  degradedFeatures,
+  DynamoAlertStateStore,
+  healthChanged,
+  reconcileAlertState,
+} from "./state.js";
 
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
@@ -70,6 +76,9 @@ export async function pollSources(config, persistState = true, options = {}) {
   const { sources } = await fetchFeedSources(config);
   const results = [];
   const totalFetchStartedAt = performance.now();
+  const stateStore = options.stateStore ?? (persistState
+    ? new DynamoAlertStateStore(dynamo, process.env.AWS_SAM_FEED_STATE_TABLE)
+    : null);
 
   for (const source of sources) {
     const ingestion = {
@@ -80,16 +89,27 @@ export async function pollSources(config, persistState = true, options = {}) {
     };
     const fetchStartedAt = performance.now();
     try {
-      // const xmlWrapper =
       const alerts = await ingestSource(source, ingestion);
       ingestion.fetchDurationMs = Math.round(performance.now() - fetchStartedAt);
-      const parkCandidates = reduceAlertLifecycle(alerts);
+      const lifecycle = reduceAlertLifecycleState(alerts);
+      let parkCandidates = lifecycle.features;
+      let lastSuccess = new Date().toISOString();
+      if (stateStore) {
+        const previousState = await stateStore.load(source.id);
+        const reconciliation = reconcileAlertState(
+          previousState.records,
+          parkCandidates,
+          { immediatelyRemovedIds: lifecycle.immediatelyRemovedIds },
+        );
+        await stateStore.saveSuccess(source.id, reconciliation, lastSuccess);
+        logHealthChange(source.id, previousState, "ok", null, lastSuccess);
+        parkCandidates = reconciliation.features;
+      }
       const currentAlerts = filterSourceFeatures(parkCandidates, source);
-      if (persistState)
-        await persistSourceState(source, "ok", currentAlerts.length);
       const result = {
         id: source.id,
         status: "ok",
+        lastSuccess,
         alerts: currentAlerts,
         ingestion,
         filters: filterDiagnostics(source),
@@ -101,16 +121,40 @@ export async function pollSources(config, persistState = true, options = {}) {
       results.push(result);
     } catch (error) {
       ingestion.fetchDurationMs = Math.round(performance.now() - fetchStartedAt);
-      if (persistState)
-        await persistSourceState(source, "degraded", 0, error.message);
-      results.push({
+      let parkCandidates = [];
+      let lastSuccess = null;
+      if (stateStore) {
+        const previousState = await stateStore.load(source.id);
+        parkCandidates = degradedFeatures(previousState.records);
+        lastSuccess = previousState.lastSuccess;
+        const failedAt = new Date().toISOString();
+        await stateStore.saveFailure(
+          source.id,
+          error.message,
+          failedAt,
+          previousState,
+        );
+        logHealthChange(
+          source.id,
+          previousState,
+          "degraded",
+          error.message,
+          failedAt,
+        );
+      }
+      const result = {
         id: source.id,
         status: "degraded",
-        alerts: [],
+        lastSuccess,
+        alerts: filterSourceFeatures(parkCandidates, source),
         ingestion,
         filters: filterDiagnostics(source),
         error: error.message,
+      };
+      Object.defineProperty(result, "parkCandidates", {
+        value: parkCandidates,
       });
+      results.push(result);
     }
   }
 
@@ -148,6 +192,17 @@ function filterDiagnostics(source) {
       requireGeometry: override.requireGeometry ?? "",
     })),
   };
+}
+
+function logHealthChange(sourceId, previousState, status, error, timestamp) {
+  if (!healthChanged(previousState, status, error)) return;
+  console.log(JSON.stringify({
+    event: "feed-source-health-changed",
+    sourceId,
+    status,
+    error,
+    timestamp,
+  }));
 }
 
 export async function loadRuntimeConfig() {
@@ -331,9 +386,14 @@ export function normalizeCapXml(xml, source) {
 }
 
 export function reduceAlertLifecycle(features, now = new Date()) {
+  return reduceAlertLifecycleState(features, now).features;
+}
+
+export function reduceAlertLifecycleState(features, now = new Date()) {
   const active = new Map();
   const cancelled = new Set();
   const superseded = new Set();
+  const expired = new Set();
 
   for (const feature of features) {
     const properties = feature.properties ?? {};
@@ -353,17 +413,23 @@ export function reduceAlertLifecycle(features, now = new Date()) {
       references.forEach((identifier) => superseded.add(identifier));
     }
 
-    if (!isExpired(properties.expires, now)) {
-      active.set(properties.identifier ?? feature.id, feature);
-    }
+    const identifier = properties.identifier ?? feature.id;
+    if (isExpired(properties.expires, now)) expired.add(identifier);
+    else active.set(identifier, feature);
   }
 
-  return [...active.entries()]
+  const immediatelyRemovedIds = new Set([
+    ...cancelled,
+    ...superseded,
+    ...expired,
+  ]);
+  const current = [...active.entries()]
     .filter(
       ([identifier]) =>
         !cancelled.has(identifier) && !superseded.has(identifier),
     )
     .map(([, feature]) => feature);
+  return { features: current, immediatelyRemovedIds: [...immediatelyRemovedIds] };
 }
 
 export function parseReferences(value) {
@@ -446,22 +512,6 @@ function parameterValues(info, valueName) {
     .flatMap((parameter) => String(parameter.value ?? "").split(","))
     .map((value) => value.trim())
     .filter(Boolean);
-}
-
-async function persistSourceState(source, status, alertCount, error) {
-  const item = {
-    state_key: { S: `source:${source.id}` },
-    status: { S: status },
-    alert_count: { N: String(alertCount) },
-    updated_at: { S: new Date().toISOString() },
-  };
-  if (error) item.error = { S: error.slice(0, 1000) };
-  await dynamo.send(
-    new PutItemCommand({
-      TableName: process.env.AWS_SAM_FEED_STATE_TABLE,
-      Item: item,
-    }),
-  );
 }
 
 function asArray(value) {

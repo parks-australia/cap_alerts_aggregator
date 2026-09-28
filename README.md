@@ -84,8 +84,18 @@ stage.
 
 Per-park files implement the version-one contract documented by
 `schemas/park-alerts-v1.schema.json`. Each file includes source health, attribution, and normalized
-alert features. Freshly fetched features have `properties.degraded: false`; a future
-last-known-good recovery path may publish cached features with that value set to `true`.
+alert features. Freshly fetched features have `properties.degraded: false`. When a source poll fails,
+its last-known-good features are loaded from DynamoDB and published with `degraded: true`; failed
+polls do not count as missing-alert polls. After successful polls, an alert missing once remains in
+the output and is removed after the second consecutive absence. Explicit CAP cancellation/update
+references, native retractions, and expiry remove persisted alerts immediately.
+
+DynamoDB uses `source_id` as its partition key and `record_key` as its sort key. Each alert is stored
+separately to avoid the 400 KB item limit, with one `METADATA` item per source for health and
+`lastSuccess`. Deployments created from the earlier single-key `state_key` template must replace or
+migrate the state table; changing a DynamoDB primary key cannot be performed in place. Alert records
+without a provider expiry receive a rolling seven-day TTL and are refreshed by successful polls.
+Source health is logged as structured JSON only on the first result or when status/error changes.
 
 Parks Australia CAP documents carry association metadata through standard CAP `<parameter>`
 elements. `ParksAustraliaParkId` contains a Gatsby park shortcode and

@@ -179,7 +179,7 @@ export function buildParkOutputs(
   const sources = sourceResults.map((source) => ({
     id: source.id,
     status: source.status,
-    lastSuccess: source.status === "ok" ? generatedAt : null,
+    lastSuccess: source.lastSuccess ?? null,
   }));
   const attribution = [
     ...new Set(
