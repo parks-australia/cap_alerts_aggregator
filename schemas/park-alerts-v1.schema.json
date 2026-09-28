@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://parksaustralia.gov.au/schemas/cap-alerts/park-alerts-v1.schema.json",
+  "title": "Parks Australia current alerts by park",
+  "type": "object",
+  "required": ["type", "schemaVersion", "park", "generatedAt", "sources", "attribution", "features"],
+  "properties": {
+    "type": { "const": "FeatureCollection" },
+    "schemaVersion": { "const": 1 },
+    "park": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status", "lastSuccess"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["ok", "degraded"] },
+          "lastSuccess": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "attribution": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "features": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/alertFeature" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "alertFeature": {
+      "type": "object",
+      "required": ["type", "id", "geometry", "properties"],
+      "properties": {
+        "type": { "const": "Feature" },
+        "id": { "anyOf": [{ "type": "string" }, { "type": "number" }] },
+        "geometry": { "anyOf": [{ "type": "object" }, { "type": "null" }] },
+        "properties": {
+          "type": "object",
+          "required": ["source", "sourceType", "identifier", "locationIds", "parkIds"],
+          "properties": {
+            "source": {
+              "type": "object",
+              "required": ["feedSourceId"],
+              "properties": {
+                "feedSourceId": { "type": "string" },
+                "originState": { "type": "string" },
+                "originAgency": { "type": "string" },
+                "originFeedId": { "type": "string" }
+              },
+              "additionalProperties": true
+            },
+            "sourceType": { "type": "string" },
+            "identifier": { "anyOf": [{ "type": "string" }, { "type": "number" }] },
+            "locationIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+            "parkIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+            "circles": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["center", "radiusKm"],
+                "properties": {
+                  "center": {
+                    "type": "array",
+                    "prefixItems": [{ "type": "number" }, { "type": "number" }],
+                    "minItems": 2,
+                    "maxItems": 2
+                  },
+                  "radiusKm": { "type": "number", "minimum": 0 }
+                },
+                "additionalProperties": false
+              }
+            },
+            "degraded": { "type": "boolean" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

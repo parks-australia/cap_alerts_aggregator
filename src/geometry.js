@@ -125,9 +125,15 @@ export function assignFeaturesToParks(features, boundaries) {
 
   for (const feature of features) {
     const explicitParkIds = feature.properties?.parkIds ?? [];
-    const parkIds = explicitParkIds.length
-      ? explicitParkIds.filter((parkId) => Object.hasOwn(boundaries, parkId))
-      : matchingParks(feature, boundaries);
+    const knownExplicitParkIds = explicitParkIds.filter((parkId) =>
+      Object.hasOwn(boundaries, parkId),
+    );
+    const geographicallyMatchedParkIds = matchingParks(feature, boundaries);
+    const parkIds = feature.geometry
+      ? geographicallyMatchedParkIds.filter(
+          (parkId) => !knownExplicitParkIds.length || knownExplicitParkIds.includes(parkId),
+        )
+      : knownExplicitParkIds;
     for (const parkId of parkIds) {
       output[parkId].push(feature);
     }

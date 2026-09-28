@@ -402,6 +402,7 @@ function normalizeAlert(alert, source) {
     properties: {
       source: { feedSourceId: source.id },
       sourceType: source.feedFormat,
+      degraded: false,
       identifier: alert.identifier,
       sender: alert.sender,
       senderName: info.senderName,

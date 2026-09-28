@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { URL } from "node:url";
+import Ajv2020 from "ajv/dist/2020.js";
+import addFormats from "ajv-formats";
 import {
   assignFeaturesToParks,
   buildParkOutputs,
@@ -9,6 +13,13 @@ import {
   parseCapPolygon,
 } from "../src/geometry.js";
 import { point, polygon } from "@turf/helpers";
+
+const schema = JSON.parse(
+  readFileSync(new URL("../schemas/park-alerts-v1.schema.json", import.meta.url), "utf8"),
+);
+const ajv = new Ajv2020({ strict: true });
+addFormats(ajv);
+const validateParkOutput = ajv.compile(schema);
 
 describe("CAP geometry normalization", () => {
   it("parses CAP polygon coordinates into GeoJSON longitude/latitude order", () => {
@@ -87,6 +98,37 @@ describe("CAP geometry normalization", () => {
     expect(assigned.parkB).toHaveLength(1);
   });
 
+  it("never lets an explicit park assignment bypass geometry matching", () => {
+    const boundaries = {
+      parkA: polygon([[[0, 0], [1, 0], [1, 1], [0, 0]]]),
+      parkB: polygon([[[10, 10], [11, 10], [11, 11], [10, 10]]]),
+    };
+    const outsideSelectedPark = point([10.5, 10.5], { parkIds: ["parkA"] });
+    const insideSelectedPark = point([0.5, 0.25], { parkIds: ["parkA"] });
+
+    const assigned = assignFeaturesToParks(
+      [outsideSelectedPark, insideSelectedPark],
+      boundaries,
+    );
+
+    expect(assigned.parkA).toEqual([insideSelectedPark]);
+    expect(assigned.parkB).toEqual([]);
+  });
+
+  it("uses explicit park assignment only when geometry is absent", () => {
+    const alert = {
+      type: "Feature",
+      id: "geometry-less",
+      geometry: null,
+      properties: { parkIds: ["parkA"] },
+    };
+    const assigned = assignFeaturesToParks([alert], {
+      parkA: polygon([[[0, 0], [1, 0], [1, 1], [0, 0]]]),
+    });
+
+    expect(assigned.parkA).toEqual([alert]);
+  });
+
   it("builds a per-park FeatureCollection output", () => {
     const alert = polygon(
       [
@@ -125,10 +167,15 @@ describe("CAP geometry normalization", () => {
   });
 
   it("publishes source health and attribution metadata", () => {
-    const alert = point([0, 0], {
+    const alert = point([10.5, 10.25], {
       source: { feedSourceId: "dataquoll" },
+      sourceType: "dataquoll-geojson",
+      identifier: "incident-1",
+      locationIds: [],
       parkIds: ["parkA"],
+      degraded: false,
     });
+    alert.id = "incident-1";
     const outputs = buildParkOutputs(
       [alert],
       { parkA: polygon([[[10, 10], [11, 10], [11, 11], [10, 10]]]) },
@@ -148,6 +195,10 @@ describe("CAP geometry normalization", () => {
     }]);
     expect(outputs.parkA.attribution).toEqual(["https://example.test/attribution"]);
     expect(outputs.parkA.features).toHaveLength(1);
+    expect(
+      validateParkOutput(outputs.parkA),
+      JSON.stringify(validateParkOutput.errors),
+    ).toBe(true);
   });
 
   it("loads and culls against the supplied anbg and bnp boundary assets", async () => {

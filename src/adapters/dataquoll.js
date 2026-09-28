@@ -73,6 +73,7 @@ function normalizeFeature(feature, source) {
         originFeedId: origin.feedId,
       },
       sourceType: source.feedFormat,
+      degraded: false,
       identifier: feature.id,
       sender: origin.agency,
       status: properties.status,

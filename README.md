@@ -82,6 +82,23 @@ included in that park's file; alerts with no usable geometry are culled from per
 These local files are the current inspection point. S3/CloudFront publication remains a deployment
 stage.
 
+Per-park files implement the version-one contract documented by
+`schemas/park-alerts-v1.schema.json`. Each file includes source health, attribution, and normalized
+alert features. Freshly fetched features have `properties.degraded: false`; a future
+last-known-good recovery path may publish cached features with that value set to `true`.
+
+Parks Australia CAP documents carry association metadata through standard CAP `<parameter>`
+elements. `ParksAustraliaParkId` contains a Gatsby park shortcode and
+`ParksAustraliaLocationUUID` contains a Drupal Location UUID. Both parameters may be repeated.
+Geometry is always authoritative when present. For Drupal-authored alerts, selected park IDs limit
+the eligible parks and the geometry must also intersect each eligible park boundary. An alert with
+geometry outside its selected park is not published for that park or reassigned to another park.
+Only a geometry-less alert falls back to its explicit park IDs. External feeds without explicit park
+IDs continue through boundary intersection. Per-park overrides change filters after geographic
+assignment; they never assign an alert to a park. Exact CAP circles are retained in
+`properties.circles` while their GeoJSON polygon approximation remains in `geometry` for spatial
+filtering and standard clients.
+
 For source diagnostics, inspect the fetch and parsing stages with:
 
 ```sh
