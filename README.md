@@ -35,6 +35,7 @@ npm test
 npm run lint
 npm run sam:validate
 npm run sam:build
+npm run sam:deploy
 ```
 
 ### Local Drupal testing
@@ -129,8 +130,10 @@ count followed by an error usually means the linked documents were not CAP XML.
 
 ## SAM deployment
 
+Local changes will only be detected after `sam build` has been run, as CloudFormation relies on the built artifacts.
+
 ```sh
-sam deploy --guided
+sam build && sam deploy --profile 'parks-sam-manager' --region ap-southeast-2
 ```
 
 Required deployment parameters:
