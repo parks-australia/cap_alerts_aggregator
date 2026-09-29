@@ -250,7 +250,7 @@ export async function fetchFeedSources(config) {
 
 export async function ingestSource(source, ingestion = null) {
   if (source.feedFormat === "rss" || source.feedFormat === "atom") {
-    const feed = await fetchText(source.feedUrl, source, ingestion);
+    const feed = await fetchText(withDefaultLimit(source.feedUrl), source, ingestion);
     const inlineAlerts = extractInlineCapAlerts(feed, source);
     if (ingestion) ingestion.entryCount = countFeedEntries(feed, source.feedFormat);
     if (inlineAlerts.length) {
@@ -269,7 +269,7 @@ export async function ingestSource(source, ingestion = null) {
 
   if (source.feedFormat === "cap-xml") {
     const alerts = normalizeCapXml(
-      await fetchText(source.feedUrl, source, ingestion),
+      await fetchText(withDefaultLimit(source.feedUrl), source, ingestion),
       source,
     );
     if (ingestion) ingestion.documentCount = 1;
@@ -383,6 +383,21 @@ export function extractCanonicalLinks(xml, format) {
       )?.["@_href"];
     })
     .filter(Boolean);
+}
+
+// Feeds that support it return more per request; unsupported feeds ignore the parameter.
+const defaultFeedItemLimit = 500;
+
+export function withDefaultLimit(feedUrl) {
+  try {
+    const url = new URL(feedUrl);
+    if (!url.searchParams.has("limit")) {
+      url.searchParams.set("limit", String(defaultFeedItemLimit));
+    }
+    return String(url);
+  } catch {
+    return feedUrl;
+  }
 }
 
 export function extractInlineCapAlerts(xml, source) {

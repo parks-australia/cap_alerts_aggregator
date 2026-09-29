@@ -268,10 +268,11 @@ describe("CAP ingestion first slice", () => {
 
   it("sends a source credential to Atom feeds and their canonical CAP documents", async () => {
     const feedUrl = "https://feed.test/alerts.atom";
+    const requestedFeedUrl = `${feedUrl}?limit=500`;
     const documentUrl = "https://feed.test/alert.xml";
     const atom = `<feed><entry><link href="${documentUrl}" /></entry></feed>`;
     const fetchMock = vi.fn(async (url) => {
-      if (url === feedUrl) return { ok: true, text: async () => atom };
+      if (url === requestedFeedUrl) return { ok: true, text: async () => atom };
       return { ok: true, text: async () => capXml };
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -283,7 +284,7 @@ describe("CAP ingestion first slice", () => {
       credential: "dataquoll-token",
     });
 
-    expect(fetchMock).toHaveBeenCalledWith(feedUrl, {
+    expect(fetchMock).toHaveBeenCalledWith(requestedFeedUrl, {
       headers: { authorization: "Bearer dataquoll-token" },
     });
     expect(fetchMock).toHaveBeenCalledWith(documentUrl, {
@@ -301,7 +302,7 @@ describe("CAP ingestion first slice", () => {
     let activeFetches = 0;
     let maximumActiveFetches = 0;
     const fetchMock = vi.fn(async (url) => {
-      if (url === "https://feed.test/rss.xml") {
+      if (url === "https://feed.test/rss.xml?limit=500") {
         return { ok: true, text: async () => rss };
       }
       activeFetches += 1;
