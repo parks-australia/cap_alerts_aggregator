@@ -10,6 +10,6 @@ region = "ap-southeast-2"
 profile = "parks-sam-manager"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
-parameter_overrides = "DrupalFeedSourcesUrl=\"https://enormously-stirred-starfish.ngrok-free.app/api/cap-alerts/feed-sources/\" DrupalAggregatorSecretSsmParameter=\"/parks/test/cap-aggregator/drupal-connector-secret\" PollSchedule=\"rate(1 minute)\""
+parameter_overrides = "AllowedOrigins=\"http://localhost:8000,http://127.0.0.1:8000,https://learn.anbg.gov.au,https://visit.anbg.gov.au,https://australianmarineparks.gov.au,https://booderee.gov.au,https://christmasislandnationalpark.gov.au,https://parksaustralia.gov.au,https://kakadu.gov.au,https://norfolkislandnationalpark.gov.au,https://pulukeelingnationalpark.gov.au,https://uluru.gov.au\" DrupalFeedSourcesUrl=\"https://enormously-stirred-starfish.ngrok-free.app/api/cap-alerts/feed-sources/\" DrupalAggregatorSecretSsmParameter=\"/parks/test/cap-aggregator/drupal-connector-secret\" PollSchedule=\"rate(1 minute)\""
 image_repositories = []
 disable_rollback = true

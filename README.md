@@ -2,6 +2,16 @@
 
 Standalone Node.js AWS SAM service for polling CAP Feed Sources configured in Drupal and publishing current per-park alert data for Parks Australia websites and future consumers.
 
+- [CAP Alerts Aggregator](#cap-alerts-aggregator)
+  - [Drupal Dependency](#drupal-dependency)
+  - [Current vertical slice](#current-vertical-slice)
+  - [Local development](#local-development)
+    - [Local Drupal testing](#local-drupal-testing)
+  - [SAM deployment](#sam-deployment)
+  - [Viewing DynamoDB state data](#viewing-dynamodb-state-data)
+  - [Cloudfront CORS policy](#cloudfront-cors-policy)
+
+
 ## Drupal Dependency
 
 This project requires Drupal to provide Feed Source configuration through the
@@ -28,11 +38,25 @@ Park attribution, boundary matching, cancellation/expiry reduction, GeoJSON adap
 
 ## Local development
 
+To spin up a local version:
+
 ```sh
+git clone <repository-url/cap_alerts_aggregator.git>
+cd cap_alerts_aggregator
 npm install
 npm run local:poll
+```
+
+To run tests:
+
+```sh
 npm test
 npm run lint
+```
+
+To deploy to AWS using SAM (check details in `sam.toml` before running!):
+
+```sh
 npm run sam:validate
 npm run sam:build
 npm run sam:deploy
@@ -140,3 +164,36 @@ Required deployment parameters:
 
 - `DrupalFeedSourcesUrl`
 - `DrupalAggregatorSecretSsmParameter`
+
+## Viewing DynamoDB state data
+
+**Note that table metadata in AWS's DynamoDB UI may lag several hours behind the live data inside the table.** 
+
+To get the current count, use the following scan command:
+
+```sh
+aws dynamodb scan --table-name <dynamodb-table-name> --select COUNT --profile <aws-profile-name> --region ap-southeast-2
+```
+
+## Cloudfront CORS policy
+
+The Cloudfront instance should return a `403` to browser requests, but serves the content publicly via `curl` requests. The CORS policy doesn't prevent untrusted origins from making requests, but it does control which origins are allowed to access the resources from a browser context e.g via JavaScript `fetch` requests.
+
+The permitted origins are defined under 'parameter_overrides' in the `samconfig.toml` configuration file.
+
+To test the Cloudfront CORS policy and see the final output of the aggregator, you can use the following commands:
+
+```sh
+export URL="https://your-cloudfront-instance-url/alerts/<filename.ext>"
+```
+
+e.g. `https://your-cloudfront-instance-url/alerts/knp.json`
+
+Then try curling it:
+
+```sh
+curl -I -H 'Origin: https://seems-legit.trusted' "$URL"
+curl -I -H 'Origin: https://untrusted.example' "$URL"
+```
+
+Any changes to the Cloudfront CORS policy in the `samconfig.toml` file will require a redeployment using `sam build && sam deploy` for the changes to take effect.

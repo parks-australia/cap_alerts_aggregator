@@ -18,7 +18,7 @@ Globals:
 Parameters:
   AllowedOrigins:
     Type: CommaDelimitedList
-    Default: "*"
+    Default: "http://localhost:8000"
     Description: Browser origins permitted to fetch park alert JSON.
   DrupalFeedSourcesUrl:
     Type: String
@@ -119,6 +119,24 @@ Resources:
         SigningBehavior: always
         SigningProtocol: sigv4
 
+  AlertsResponseHeadersPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub "${AWS::StackName}-cors"
+        CorsConfig:
+          AccessControlAllowCredentials: false
+          AccessControlAllowHeaders:
+            Items: ["*"]
+          AccessControlAllowMethods:
+            Items: [GET, HEAD, OPTIONS]
+          AccessControlAllowOrigins:
+            Items: !Ref AllowedOrigins
+          AccessControlExposeHeaders:
+            Items: [ETag]
+          AccessControlMaxAgeSec: 3600
+          OriginOverride: true
+
   AlertsDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -140,9 +158,10 @@ Resources:
           CachedMethods: [GET, HEAD, OPTIONS]
           Compress: true
           # AWS managed policies: CachingOptimized and CORS-S3Origin.
-          # CORS headers come from the bucket's CorsConfiguration, forwarded by the origin request policy.
+          # The response policy applies origin-specific CORS headers after cache lookup.
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
           OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf
+          ResponseHeadersPolicyId: !Ref AlertsResponseHeadersPolicy
 
 Outputs:
   AggregatorFunction:
