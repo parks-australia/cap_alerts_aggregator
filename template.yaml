@@ -29,6 +29,7 @@ Resources:
   AggregatorFunction:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: !Sub "${AWS::StackName}-function"
       CodeUri: ./
       Handler: src/index.handler
       Policies:
@@ -44,12 +45,14 @@ Resources:
         PollSchedule:
           Type: Schedule
           Properties:
+            Name: !Sub "${AWS::StackName}-poll-schedule"
             Schedule: !Ref PollSchedule
             Enabled: true
 
   FeedStateTable:
     Type: AWS::DynamoDB::Table
     Properties:
+      TableName: !Sub "${AWS::StackName}-feed-state"
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: source_id
@@ -68,6 +71,7 @@ Resources:
   OutputBucket:
     Type: AWS::S3::Bucket
     Properties:
+      BucketName: !Sub "${AWS::StackName}-alerts"
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:

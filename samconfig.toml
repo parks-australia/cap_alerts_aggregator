@@ -1,0 +1,14 @@
+version = 0.1
+[default.deploy.parameters]
+stack_name = "parks-test-cap-alerts-aggregator"
+# Bucket is created outside the stack: artifacts must exist before CloudFormation runs.
+resolve_s3 = false
+s3_bucket = "parks-test-cap-alerts-aggregator-artifacts"
+s3_prefix = "parks-test-cap-alerts-aggregator"
+region = "ap-southeast-2"
+profile = "parks-sam-manager"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "DrupalFeedSourcesUrl=\"https://enormously-stirred-starfish.ngrok-free.app/api/cap-alerts/feed-sources/\" DrupalAggregatorSecretSsmParameter=\"/parks/test/cap-aggregator/drupal-connector-secret\" PollSchedule=\"rate(1 minute)\""
+image_repositories = []
+disable_rollback = true

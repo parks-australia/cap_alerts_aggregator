@@ -1,0 +1,167 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CloudFormationStacks",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:CreateChangeSet",
+        "cloudformation:DeleteChangeSet",
+        "cloudformation:DeleteStack",
+        "cloudformation:DescribeChangeSet",
+        "cloudformation:DescribeStackEvents",
+        "cloudformation:DescribeStackResource",
+        "cloudformation:DescribeStackResources",
+        "cloudformation:DescribeStacks",
+        "cloudformation:ExecuteChangeSet",
+        "cloudformation:GetTemplate"
+      ],
+      "Resource": "arn:aws:cloudformation:ap-southeast-2:987594929534:stack/parks-test-cap-alerts-aggregator/*"
+    },
+    {
+      "Sid": "CloudFormationServerlessTransform",
+      "Effect": "Allow",
+      "Action": "cloudformation:CreateChangeSet",
+      "Resource": "arn:aws:cloudformation:ap-southeast-2:aws:transform/Serverless-2016-10-31"
+    },
+    {
+      "Sid": "CloudFormationAccountLevelReads",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:GetTemplateSummary",
+        "cloudformation:ListStacks"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DynamoDbFeedStateTable",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:CreateTable",
+        "dynamodb:DeleteTable",
+        "dynamodb:DescribeTable",
+        "dynamodb:DescribeTimeToLive",
+        "dynamodb:ListTagsOfResource",
+        "dynamodb:UpdateTable",
+        "dynamodb:UpdateTimeToLive"
+      ],
+      "Resource": "arn:aws:dynamodb:ap-southeast-2:987594929534:table/parks-test-cap-alerts-aggregator-feed-state"
+    },
+    {
+      "Sid": "EventBridgePollSchedule",
+      "Effect": "Allow",
+      "Action": [
+        "events:DeleteRule",
+        "events:DescribeRule",
+        "events:ListTagsForResource",
+        "events:PutRule",
+        "events:PutTargets",
+        "events:RemoveTargets",
+        "events:TagResource"
+      ],
+      "Resource": "arn:aws:events:ap-southeast-2:987594929534:rule/parks-test-cap-alerts-aggregator-poll-schedule"
+    },
+    {
+      "Sid": "LambdaExecutionRoleManagement",
+      "Effect": "Allow",
+      "Action": [
+        "iam:AttachRolePolicy",
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:DeleteRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListRolePolicies",
+        "iam:PutRolePolicy",
+        "iam:TagRole"
+      ],
+      "Resource": "arn:aws:iam::987594929534:role/parks-test-cap-alerts-aggregator-*"
+    },
+    {
+      "Sid": "PassExecutionRoleToLambdaOnly",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::987594929534:role/parks-test-cap-alerts-aggregator-*",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "lambda.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "AggregatorFunction",
+      "Effect": "Allow",
+      "Action": [
+        "lambda:AddPermission",
+        "lambda:CreateFunction",
+        "lambda:DeleteFunction",
+        "lambda:GetFunction",
+        "lambda:GetFunctionConfiguration",
+        "lambda:InvokeFunction",
+        "lambda:ListTags",
+        "lambda:RemovePermission",
+        "lambda:TagResource",
+        "lambda:UpdateFunctionCode",
+        "lambda:UpdateFunctionConfiguration"
+      ],
+      "Resource": "arn:aws:lambda:ap-southeast-2:987594929534:function:parks-test-cap-alerts-aggregator-function"
+    },
+    {
+      "Sid": "ArtifactAndOutputBuckets",
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:DeleteBucket",
+        "s3:DeleteBucketPolicy",
+        "s3:GetBucketPolicy",
+        "s3:GetBucketPublicAccessBlock",
+        "s3:GetBucketTagging",
+        "s3:GetBucketVersioning",
+        "s3:GetEncryptionConfiguration",
+        "s3:ListBucket",
+        "s3:ListBucketVersions",
+        "s3:PutBucketPolicy",
+        "s3:PutBucketPublicAccessBlock",
+        "s3:PutBucketTagging",
+        "s3:PutBucketVersioning",
+        "s3:PutEncryptionConfiguration"
+      ],
+      "Resource": [
+        "arn:aws:s3:::parks-test-cap-alerts-aggregator-artifacts",
+        "arn:aws:s3:::parks-test-cap-alerts-aggregator-alerts"
+      ]
+    },
+    {
+      "Sid": "ArtifactAndOutputObjects",
+      "Effect": "Allow",
+      "Action": [
+        "s3:DeleteObject",
+        "s3:DeleteObjectVersion",
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:PutObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::parks-test-cap-alerts-aggregator-artifacts/*",
+        "arn:aws:s3:::parks-test-cap-alerts-aggregator-alerts/*"
+      ]
+    },
+    {
+      "Sid": "DrupalConnectorSecretParameter",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter",
+        "ssm:PutParameter"
+      ],
+      "Resource": "arn:aws:ssm:ap-southeast-2:987594929534:parameter/parks/test/cap-aggregator/drupal-connector-secret"
+    },
+    {
+      "Sid": "SsmParameterDiscovery",
+      "Effect": "Allow",
+      "Action": "ssm:DescribeParameters",
+      "Resource": "*"
+    }
+  ]
+}
