@@ -14,7 +14,9 @@
         "cloudformation:DescribeStackResources",
         "cloudformation:DescribeStacks",
         "cloudformation:ExecuteChangeSet",
-        "cloudformation:GetTemplate"
+        "cloudformation:GetTemplate",
+        "cloudformation:RollbackStack",
+        "cloudformation:ContinueUpdateRollback"
       ],
       "Resource": "arn:aws:cloudformation:ap-southeast-2:987594929534:stack/parks-test-cap-alerts-aggregator/*"
     },
@@ -41,7 +43,10 @@
         "dynamodb:DeleteTable",
         "dynamodb:DescribeTable",
         "dynamodb:DescribeTimeToLive",
+        "dynamodb:GetItem",
         "dynamodb:ListTagsOfResource",
+        "dynamodb:Query",
+        "dynamodb:Scan",
         "dynamodb:UpdateTable",
         "dynamodb:UpdateTimeToLive"
       ],
@@ -75,7 +80,8 @@
         "iam:ListAttachedRolePolicies",
         "iam:ListRolePolicies",
         "iam:PutRolePolicy",
-        "iam:TagRole"
+        "iam:TagRole",
+        "iam:UpdateAssumeRolePolicy"
       ],
       "Resource": "arn:aws:iam::987594929534:role/parks-test-cap-alerts-aggregator-*"
     },
@@ -119,6 +125,8 @@
         "s3:GetBucketPublicAccessBlock",
         "s3:GetBucketTagging",
         "s3:GetBucketVersioning",
+        "s3:GetBucketCORS",
+        "s3:PutBucketCORS",
         "s3:GetEncryptionConfiguration",
         "s3:ListBucket",
         "s3:ListBucketVersions",
@@ -147,6 +155,24 @@
         "arn:aws:s3:::parks-test-cap-alerts-aggregator-artifacts/*",
         "arn:aws:s3:::parks-test-cap-alerts-aggregator-alerts/*"
       ]
+    },
+    {
+      "Sid": "AlertsCloudFrontDistribution",
+      "Effect": "Allow",
+      "Action": [
+        "cloudfront:CreateDistribution",
+        "cloudfront:DeleteDistribution",
+        "cloudfront:GetDistribution",
+        "cloudfront:UpdateDistribution",
+        "cloudfront:CreateInvalidation",
+        "cloudfront:TagResource",
+        "cloudfront:ListTagsForResource",
+        "cloudfront:CreateOriginAccessControl",
+        "cloudfront:DeleteOriginAccessControl",
+        "cloudfront:GetOriginAccessControl",
+        "cloudfront:UpdateOriginAccessControl"
+      ],
+      "Resource": "*"
     },
     {
       "Sid": "DrupalConnectorSecretParameter",

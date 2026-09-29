@@ -16,6 +16,10 @@ Globals:
         BOUNDARIES_DIR: assets/boundary_data
 
 Parameters:
+  AllowedOrigins:
+    Type: CommaDelimitedList
+    Default: "*"
+    Description: Browser origins permitted to fetch park alert JSON.
   DrupalFeedSourcesUrl:
     Type: String
   DrupalAggregatorSecretSsmParameter:
@@ -76,9 +80,75 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins: !Ref AllowedOrigins
+            AllowedMethods: [GET, HEAD]
+            AllowedHeaders: ["*"]
+            ExposedHeaders: [ETag]
+            MaxAge: 3600
+
+  # Reads are served only through CloudFront; the bucket itself stays private.
+  OutputBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref OutputBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "arn:${AWS::Partition}:s3:::${OutputBucket}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${AlertsDistribution}"
+
+  AlertsOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${AWS::StackName}-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  AlertsDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "${AWS::StackName} park alert outputs"
+        HttpVersion: http2and3
+        PriceClass: PriceClass_All
+        Origins:
+          - Id: AlertsBucketOrigin
+            DomainName: !GetAtt OutputBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt AlertsOriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        DefaultCacheBehavior:
+          TargetOriginId: AlertsBucketOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD, OPTIONS]
+          Compress: true
+          # AWS managed policies: CachingOptimized and CORS-S3Origin.
+          # CORS headers come from the bucket's CorsConfiguration, forwarded by the origin request policy.
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf
 
 Outputs:
   AggregatorFunction:
     Value: !GetAtt AggregatorFunction.Arn
   OutputBucket:
     Value: !Ref OutputBucket
+  AlertsBaseUrl:
+    Description: Base URL for per-park alert JSON, e.g. <AlertsBaseUrl>/alerts/knp.json
+    Value: !Sub "https://${AlertsDistribution.DomainName}"
