@@ -251,8 +251,19 @@ export async function fetchFeedSources(config) {
 export async function ingestSource(source, ingestion = null) {
   if (source.feedFormat === "rss" || source.feedFormat === "atom") {
     const feed = await fetchText(source.feedUrl, source, ingestion);
+    const inlineAlerts = extractInlineCapAlerts(feed, source);
+    if (ingestion) ingestion.entryCount = countFeedEntries(feed, source.feedFormat);
+    if (inlineAlerts.length) {
+      if (ingestion) ingestion.documentCount = inlineAlerts.length;
+      return inlineAlerts;
+    }
     const links = extractCanonicalLinks(feed, source.feedFormat);
     if (ingestion) ingestion.canonicalLinkCount = links.length;
+    if (!links.length && ingestion?.entryCount) {
+      throw new Error(
+        `Feed contained ${ingestion.entryCount} entries but no inline CAP alerts or canonical links`,
+      );
+    }
     return await ingestCanonicalDocuments(links, source, ingestion);
   }
 
@@ -372,6 +383,24 @@ export function extractCanonicalLinks(xml, format) {
       )?.["@_href"];
     })
     .filter(Boolean);
+}
+
+export function extractInlineCapAlerts(xml, source) {
+  const parsed = xmlParser.parse(xml);
+  const alerts = [];
+  for (const entry of asArray(parsed.feed?.entry)) {
+    for (const alert of asArray(entry?.content?.alert)) {
+      alerts.push(normalizeAlert(alert, { ...source, canonicalUrl: entry.id }));
+    }
+  }
+  return alerts;
+}
+
+export function countFeedEntries(xml, format) {
+  const parsed = xmlParser.parse(xml);
+  return format === "rss"
+    ? asArray(parsed.rss?.channel?.item).length
+    : asArray(parsed.feed?.entry).length;
 }
 
 export function normalizeCapXml(xml, source) {
