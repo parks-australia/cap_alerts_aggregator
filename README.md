@@ -11,7 +11,6 @@ Standalone Node.js AWS SAM service for polling CAP Feed Sources configured in Dr
   - [Viewing DynamoDB state data](#viewing-dynamodb-state-data)
   - [Cloudfront CORS policy](#cloudfront-cors-policy)
 
-
 ## Drupal Dependency
 
 This project requires Drupal to provide Feed Source configuration through the
@@ -156,18 +155,32 @@ count followed by an error usually means the linked documents were not CAP XML.
 
 Local changes will only be detected after `sam build` has been run, as CloudFormation relies on the built artifacts.
 
+To deploy, several deployment parameters are required:
+
+- `DrupalFeedSourcesUrl` (set to `https://<drupalSiteUrl>/api/cap-alerts/feed-sources/`)
+- `DrupalAggregatorSecretSsmParameter` (set in the Drupal CAP Alerts Aggregator Connector module under `https://<drupalSiteUrl>/admin/config/services/cap-alerts/aggregator-connector`)
+
+The `name:value` of the SSM parameters is defined in `samconfig.toml`.
+
+To add these to the deployment, run this:
+
 ```sh
-sam build && sam deploy --profile 'parks-sam-manager' --region ap-southeast-2
+aws ssm put-parameter \
+--name <Drupal Aggregator Secret SSM Parameter Value> \
+--type SecureString \
+--value '<Drupal Key value>' \
+--profile <aws-profile-name> --region ap-southeast-2
 ```
 
-Required deployment parameters:
+You can then run the deployment with:
 
-- `DrupalFeedSourcesUrl`
-- `DrupalAggregatorSecretSsmParameter`
+```sh
+sam build && sam deploy --profile '<aws-profile-name>' --region ap-southeast-2
+```
 
 ## Viewing DynamoDB state data
 
-**Note that table metadata in AWS's DynamoDB UI may lag several hours behind the live data inside the table.** 
+**Note that table metadata in AWS's DynamoDB UI may lag several hours behind the live data inside the table.**
 
 To get the current count, use the following scan command:
 
