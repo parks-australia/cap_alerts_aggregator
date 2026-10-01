@@ -166,6 +166,46 @@ describe("CAP geometry normalization", () => {
     expect(outputs.parkA.features).toHaveLength(1);
   });
 
+  it("deduplicates per-park alerts by identifier and sender across sources", () => {
+    const alert = (identifier, sender, feedSourceId) => ({
+      type: "Feature",
+      id: identifier,
+      geometry: null,
+      properties: {
+        identifier,
+        sender,
+        parkIds: ["parkA"],
+        source: { feedSourceId },
+      },
+    });
+    const outputs = buildParkOutputs(
+      [
+        alert("alert-1", "sender@example.test", "rss-source"),
+        alert("alert-1", "sender@example.test", "cap-xml-source"),
+        alert("alert-1", "other@example.test", "other-sender-source"),
+        alert("alert-2", "sender@example.test", "other-alert-source"),
+      ],
+      { parkA: polygon([[[0, 0], [1, 0], [1, 1], [0, 0]]]) },
+      "2026-10-01T00:00:00.000Z",
+      new Map([
+        ["rss-source", {}],
+        ["cap-xml-source", {}],
+        ["other-sender-source", {}],
+        ["other-alert-source", {}],
+      ]),
+    );
+
+    expect(outputs.parkA.features.map((feature) => [
+      feature.properties.identifier,
+      feature.properties.sender,
+      feature.properties.source.feedSourceId,
+    ])).toEqual([
+      ["alert-1", "sender@example.test", "rss-source"],
+      ["alert-1", "other@example.test", "other-sender-source"],
+      ["alert-2", "sender@example.test", "other-alert-source"],
+    ]);
+  });
+
   it("publishes source health and attribution metadata", () => {
     const alert = point([10.5, 10.25], {
       source: { feedSourceId: "dataquoll" },

@@ -199,10 +199,31 @@ export function buildParkOutputs(
         generatedAt,
         sources,
         attribution,
-        features: filterParkFeatures(parkFeatures, parkId, sourceConfigs),
+        features: deduplicateAlerts(
+          filterParkFeatures(parkFeatures, parkId, sourceConfigs),
+        ),
       },
     ]),
   );
+}
+
+function deduplicateAlerts(features) {
+  const seen = new Set();
+  return features.filter((feature) => {
+    const identifier = feature.properties?.identifier ?? feature.id;
+    const sender = feature.properties?.sender;
+    if (
+      identifier === undefined || identifier === null || identifier === ""
+      || sender === undefined || sender === null || sender === ""
+    ) {
+      return true;
+    }
+
+    const key = JSON.stringify([String(identifier), String(sender)]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function asArray(value) {
