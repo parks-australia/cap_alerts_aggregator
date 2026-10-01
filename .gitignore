@@ -39,7 +39,8 @@ composer.phar
 node_modules/
 .aws-sam/
 
-# Ignore local output and coverage directories
+# Ignore output and coverage directories
 .local-output/
+.remote-output/
 boundaries/
 coverage/
