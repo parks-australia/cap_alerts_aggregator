@@ -21,7 +21,7 @@ enabled adaptor data from that module's protected
 
 ## Current vertical slice
 
-- Node.js 22 Lambda invoked by EventBridge every minute.
+- Node.js 22 Lambda invoked by EventBridge every three minutes.
 - DynamoDB state table for source health and future lifecycle state.
 - S3 output bucket.
 - Secure Drupal Feed Source retrieval using the Drupal connector shared secret stored in SSM for AWS
@@ -150,7 +150,7 @@ jq '.sources[] | {
 source-filtered alerts remaining after expiry, cancel, and update handling. A degraded source includes `error`;
 successful RSS/Atom sources with `canonicalLinks: 0` returned an empty feed, while a nonzero link
 count followed by an error usually means the linked documents were not CAP XML.
-
+f
 ## SAM deployment
 
 Local changes will only be detected after `sam build` has been run, as CloudFormation relies on the built artifacts.
